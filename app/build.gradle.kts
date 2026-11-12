@@ -44,6 +44,21 @@ android {
         }
     }
 
+    applicationVariants.all {
+        val buildTypeName = buildType.name
+        val verName = versionName ?: "1.0.0"
+        outputs.all {
+            val outputImpl = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val abi = outputImpl.filters.find { it.filterType == "ABI" }?.identifier
+            val abiPart = if (!abi.isNullOrBlank()) "-$abi" else ""
+            outputImpl.outputFileName = if (buildTypeName == "release") {
+                "nuna-tv-v$verName$abiPart.apk"
+            } else {
+                "nuna-tv-v$verName$abiPart-$buildTypeName.apk"
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

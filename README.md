@@ -40,7 +40,7 @@ Catatan build: APK pada rilis ini ditandatangani dengan `signingConfigs.getByNam
 ### Pemutar Video, Background Audio, PiP & Mini Player
 - Dibangun dengan Media3 ExoPlayer (termasuk dukungan HLS/DASH untuk siaran **Live** dan `MergingMediaSource`), dengan jalur cepat Innertube `/youtubei/v1/player` serta prefetch video berikutnya agar pembukaan video lebih cepat.
 - **Pemutaran Latar Belakang** melalui `MediaPlaybackService` dan notifikasi `MediaStyle` (bawaan nonaktif, dapat diaktifkan lewat menu **Settings**).
-- **Jendela Popup / Picture-in-Picture (PiP)** untuk ponsel (bawaan nonaktif, dapat diaktifkan lewat menu **Settings**; pemutaran berhenti total ketika jendela PiP ditutup).
+- **Jendela Popup / Picture-in-Picture (PiP)** untuk ponsel (bawaan nonaktif, dapat diaktifkan lewat menu **Settings**; bila pemutaran latar belakang mati maka menutup jendela PiP menghentikan pemutaran, sedangkan bila pemutaran latar belakang aktif maka suara tetap berjalan hingga dihentikan dari kontrol notifikasi).
 - **Mini Player** dalam aplikasi (`MiniPlayerBar`) di atas bilah navigasi bawah saat player diperkecil.
 - Kontrol remote D-Pad di TV (`OK`, kiri/kanan singkat +/-10 detik, tahan kiri/kanan pindah video, bawah rekomendasi, atas menu channel & resolusi) serta tombol **Download** langsung di bar atas pemutar.
 - Penguat suara (`Audio Boost`) memanfaatkan `LoudnessEnhancer` Android (`Normal`, `+6 dB`, `+12 dB`, `+18 dB`) dan panduan pengguna 3 langkah yang dapat dibuka ulang dari **Settings**.

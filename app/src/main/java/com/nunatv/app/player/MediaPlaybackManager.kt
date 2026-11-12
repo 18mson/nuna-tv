@@ -744,6 +744,16 @@ object MediaPlaybackManager {
         }
     }
 
+    fun onPipClosed(context: Context) {
+        val snapshot = _state.value
+        if (snapshot.currentVideo == null) return
+        if (isBackgroundAllowed) {
+            syncBackgroundService(context.applicationContext)
+        } else {
+            stopAndClear(context)
+        }
+    }
+
     private fun syncBackgroundService(context: Context) {
         if (_state.value.currentVideo == null) return
         val intent = Intent(context, MediaPlaybackService::class.java)

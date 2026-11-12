@@ -476,12 +476,13 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         isInPipModeState = isInPictureInPictureMode
-        // Jika jendela PiP ditutup (tombol X), hentikan pemutaran secara total
+        // Jika jendela PiP ditutup (tombol X): hentikan total bila background audio nonaktif,
+        // atau biarkan audio tetap berjalan di layanan latar belakang bila background audio aktif
         if (!isInPictureInPictureMode &&
             !isChangingConfigurations &&
             lifecycle.currentState == Lifecycle.State.CREATED
         ) {
-            MediaPlaybackManager.stopAndClear(this)
+            MediaPlaybackManager.onPipClosed(this)
         }
     }
 

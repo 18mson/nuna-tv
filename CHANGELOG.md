@@ -8,7 +8,7 @@ Pembaruan besar untuk pengalaman ponsel, pemutaran latar belakang, jendela popup
 
 ### Ditambahkan
 - **Pemutaran Latar Belakang (Background Audio)** melalui `MediaPlaybackService` (`MediaSessionCompat` + `NotificationCompat.MediaStyle`) dengan kontrol Sebelumnya, Putar/Jeda, Berikutnya, dan Tutup di panel notifikasi maupun layar kunci (bawaan OFF, diaktifkan dari Settings).
-- **Jendela Popup / Picture-in-Picture (PiP)** khusus perangkat non-TV dengan `RemoteAction` kontrol pemutaran, tombol PiP di player, serta penghentian total saat jendela PiP ditutup (bawaan OFF, diaktifkan dari Settings).
+- **Jendela Popup / Picture-in-Picture (PiP)** khusus perangkat non-TV dengan `RemoteAction` kontrol pemutaran, tombol PiP di player, serta aturan penutupan jendela PiP (berhenti total bila pemutaran latar belakang mati, atau lanjut memutar audio di notifikasi bila pemutaran latar belakang aktif).
 - **Mini Player Dalam Aplikasi (`MiniPlayerBar`)** di atas bilah navigasi bawah saat player diperkecil agar pengguna dapat tetap menjelajahi tab lain sambil menonton atau mendengarkan.
 - **Dukungan YouTube Shorts**: parsing renderer Shorts (`reelItemRenderer`, `shortsLockupViewModel`), rak carousel Shorts di Beranda, grid vertikal 9:16 pada tab Shorts, serta gestur swipe atas/bawah di player untuk berpindah antar Shorts.
 - **Dukungan Siaran Live (HLS/DASH)** dengan menambahkan `media3-exoplayer-hls` dan `media3-exoplayer-dash`, penanganan manifest `m3u8`/`mpd`, serta badge `LIVE` di player dan media session.

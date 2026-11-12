@@ -17,8 +17,9 @@ local.properties
 captures/
 *.hprof
 
-# Android signing & packages
+# Android signing & packages (kecuali APK rilis terversi di releases/)
 *.apk
+!releases/**/*.apk
 *.aab
 *.ap_
 *.dex

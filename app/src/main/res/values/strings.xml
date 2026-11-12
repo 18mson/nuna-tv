@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Nuna TV</string>
+    <string name="nav_browser">YouTube</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="nav_settings">Settings</string>
+    <string name="dialog_video_found">Video Terdeteksi</string>
+    <string name="dialog_play">Putar Video</string>
+    <string name="dialog_download">Download Video</string>
+    <string name="dialog_cancel">Batal</string>
+</resources>

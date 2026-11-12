@@ -14,12 +14,15 @@ import androidx.core.app.ServiceCompat
 import com.nunatv.app.data.local.DownloadStatus
 import com.nunatv.app.data.local.DownloadedVideoEntity
 import com.nunatv.app.data.local.NunaDatabase
+import com.nunatv.app.data.preferences.AppPreferences
 import com.nunatv.app.data.preferences.VideoResolution
+import com.nunatv.app.util.CategoryDetector
 import com.nunatv.app.util.StorageUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -104,27 +107,60 @@ class DownloadService : Service() {
             return
         }
 
-        // 1. Ekstrak Video Info
+        // 1. Segera masukkan record awal (0% / skeleton) ke Room agar kartu langsung tampil instan di Home
+        val initialVideoId = extractedId ?: targetUrl.substringAfter("v=").substringBefore("&")
+        val initialThumb = if (!extractedId.isNullOrBlank()) "https://img.youtube.com/vi/$extractedId/hqdefault.jpg" else ""
+        val initialEntity = DownloadedVideoEntity(
+            videoId = initialVideoId,
+            originalUrl = targetUrl,
+            title = "",
+            author = "",
+            thumbnailUrl = initialThumb,
+            resolution = resolution.label,
+            durationSeconds = 0L,
+            category = "Umum",
+            status = DownloadStatus.QUEUED,
+            progress = 0
+        )
+        val recordId = dao.insertVideo(initialEntity)
+
+        // 2. Ekstrak Video Info & Deteksi Kategori Otomatis lalu perbarui metadata kartu
         updateNotification("Mengambil info video...", 0, indeterminate = true)
         val info = YoutubeDlManager.getVideoInfo(applicationContext, targetUrl)
-        val videoId = info?.id ?: extractedId ?: targetUrl.substringAfter("v=").substringBefore("&")
+        val videoId = info?.id ?: initialVideoId
         val title = info?.title ?: "YouTube Video ($videoId)"
+        val uploader = info?.uploader ?: ""
         val thumbnailUrl = info?.thumbnail ?: "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
         val duration = info?.duration?.toLong() ?: 0L
 
-        // 2. Simpan ke Room Database
-        val entity = DownloadedVideoEntity(
-            videoId = videoId,
-            originalUrl = targetUrl,
+        val appPreferences = AppPreferences(applicationContext)
+        val existingCategories = try {
+            appPreferences.customCategories.first()
+        } catch (_: Throwable) {
+            emptySet()
+        }
+        val detectedCategory = CategoryDetector.detectCategory(
             title = title,
-            author = info?.uploader ?: "",
-            thumbnailUrl = thumbnailUrl,
-            resolution = resolution.label,
-            durationSeconds = duration,
-            status = DownloadStatus.DOWNLOADING,
-            progress = 0
+            uploader = uploader,
+            ytCategories = info?.categories,
+            tags = info?.tags,
+            description = info?.description,
+            existingCategories = existingCategories
         )
-        val recordId = dao.insertVideo(entity)
+        if (detectedCategory != "Umum" && existingCategories.none { it.equals(detectedCategory, ignoreCase = true) }) {
+            appPreferences.addCategory(detectedCategory)
+        }
+
+        dao.updateMetadata(
+            id = recordId,
+            videoId = videoId,
+            title = title,
+            author = uploader,
+            thumbnailUrl = thumbnailUrl,
+            durationSeconds = duration,
+            category = detectedCategory,
+            status = DownloadStatus.DOWNLOADING
+        )
 
         // 3. Mulai Download
         val result = YoutubeDlManager.downloadVideo(
@@ -187,8 +223,9 @@ class DownloadService : Service() {
             }
         )
 
-        // Selesai
-        stopForeground(STOP_FOREGROUND_DETACH)
+        // Selesai: hapus notifikasi progres download agar tidak menempel di panel notifikasi
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        notificationManager.cancel(NOTIFICATION_ID)
         stopSelf()
     }
 

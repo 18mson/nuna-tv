@@ -13,7 +13,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 
 data class StreamQualityOption(
     val label: String,
@@ -32,16 +38,23 @@ data class ResolvedYoutubeVideo(
     val streamUrl: String,
     val audioStreamUrl: String?,
     val activeQuality: StreamQualityOption,
-    val qualityOptions: List<StreamQualityOption>
+    val qualityOptions: List<StreamQualityOption>,
+    val isLive: Boolean = false,
+    val userAgent: String? = null
 )
 
 object YoutubeDlManager {
 
     private const val TAG = "YoutubeDlManager"
 
-    // Gunakan player client android & web fallback yang kompatibel di Android tanpa JS runtime eksternal (Deno/Node)
+    // Gunakan player client android lebih dulu agar lebih cepat, lalu fallback web bila perlu
+    private const val YOUTUBE_FAST_STREAM_ARGS =
+        "youtube:player_client=android"
     private const val YOUTUBE_EXTRACTOR_ARGS =
         "youtube:player_client=android,web"
+    private const val STREAM_CACHE_TTL_MS = 10 * 60 * 1000L
+
+    private val streamCache = ConcurrentHashMap<String, Pair<Long, ResolvedYoutubeVideo>>()
 
     @Volatile
     private var isInitialized = false
@@ -150,7 +163,10 @@ object YoutubeDlManager {
     }
 
     /**
-     * Mengambil URL stream video+audio siap putar, daftar resolusi yang tersedia, dan metadata dalam satu panggilan yt-dlp.
+     * Mengambil URL stream video+audio siap putar:
+     * 1) Cek cache memori 10 menit
+     * 2) Coba API Innertube /player langsung (~200-500ms, tanpa Python)
+     * 3) Fallback ke yt-dlp bila diperlukan
      */
     suspend fun resolvePlayableVideo(
         context: Context,
@@ -158,27 +174,71 @@ object YoutubeDlManager {
         preferredHeight: Int = 720
     ): ResolvedYoutubeVideo? = withContext(Dispatchers.IO) {
         try {
-            init(context)
             val targetUrl = cleanUrl(videoUrl)
             val fallbackId = extractVideoId(targetUrl) ?: ""
-            val request = YoutubeDLRequest(targetUrl).apply {
-                addOption("-f", "best[ext=mp4][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best")
-                addOption("--extractor-args", YOUTUBE_EXTRACTOR_ARGS)
-                addOption("--no-playlist")
-                addOption("--no-check-certificates")
-                addOption("--socket-timeout", "30")
-                val cookiesFile = getCookiesFile(context)
-                if (cookiesFile != null && cookiesFile.exists() && cookiesFile.length() > 0) {
-                    addOption("--cookies", cookiesFile.absolutePath)
+            val cacheKey = if (fallbackId.isNotBlank()) "$fallbackId:$preferredHeight" else "$targetUrl:$preferredHeight"
+            val now = System.currentTimeMillis()
+            streamCache[cacheKey]?.let { (cachedAt, cachedResult) ->
+                if (now - cachedAt < STREAM_CACHE_TTL_MS) {
+                    return@withContext cachedResult
+                }
+                streamCache.remove(cacheKey)
+            }
+
+            // Jalur cepat: Innertube /youtubei/v1/player tanpa overhead Python/yt-dlp
+            if (fallbackId.isNotBlank()) {
+                val fastResolved = resolveViaInnertubePlayerFast(fallbackId, preferredHeight)
+                if (fastResolved != null) {
+                    streamCache[cacheKey] = System.currentTimeMillis() to fastResolved
+                    return@withContext fastResolved
                 }
             }
-            val info = YoutubeDL.getInstance().getInfo(request)
-            val formats = info.formats.orEmpty()
 
-            // Pilih audio terbaik (M4A/AAC diutamakan agar kompatibel dengan MergingMediaSource + ExoPlayer)
-            val bestAudio = formats
+            init(context)
+            val cookiesFile = getCookiesFile(context)
+
+            fun fetchInfoWithArgs(extractorArgs: String): VideoInfo? {
+                val request = YoutubeDLRequest(targetUrl).apply {
+                    addOption("-f", "best[ext=mp4][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best")
+                    addOption("--extractor-args", extractorArgs)
+                    addOption("--no-playlist")
+                    addOption("--no-warnings")
+                    addOption("--no-check-certificates")
+                    addOption("--socket-timeout", "20")
+                    if (cookiesFile != null && cookiesFile.exists() && cookiesFile.length() > 0) {
+                        addOption("--cookies", cookiesFile.absolutePath)
+                    }
+                }
+                return YoutubeDL.getInstance().getInfo(request)
+            }
+
+            val info = try {
+                fetchInfoWithArgs(YOUTUBE_FAST_STREAM_ARGS)
+            } catch (_: Throwable) {
+                null
+            } ?: fetchInfoWithArgs(YOUTUBE_EXTRACTOR_ARGS)
+                ?: return@withContext null
+
+            val formats = info.formats.orEmpty()
+            val isHlsUrl: (String?) -> Boolean = { url ->
+                !url.isNullOrBlank() && (
+                    url.contains(".m3u8", ignoreCase = true) ||
+                        url.contains("manifest/hls", ignoreCase = true)
+                    )
+            }
+            val isDashUrl: (String?) -> Boolean = { url ->
+                !url.isNullOrBlank() && (
+                    url.contains(".mpd", ignoreCase = true) ||
+                        url.contains("manifest/dash", ignoreCase = true)
+                    )
+            }
+
+            // Pilih audio terbaik (MP4/M4A non-manifest untuk merge adaptif)
+            val bestProgressiveAudio = formats
                 .filter { f ->
                     !f.url.isNullOrBlank() &&
+                        !isHlsUrl(f.url) &&
+                        !isDashUrl(f.url) &&
                         !f.acodec.isNullOrBlank() && f.acodec != "none" &&
                         (f.vcodec.isNullOrBlank() || f.vcodec == "none") &&
                         f.ext != "mhtml"
@@ -189,19 +249,29 @@ object YoutubeDlManager {
                         .thenByDescending { it.tbr }
                 )
                 .firstOrNull()
-            val bestAudioUrl = bestAudio?.url
+            val bestProgressiveAudioUrl = bestProgressiveAudio?.url
 
-            // Kumpulkan opsi resolusi per tinggi piksel (muxed atau adaptive video+audio)
+            val bestHlsAudioUrl = formats
+                .filter { f ->
+                    isHlsUrl(f.url) &&
+                        !f.acodec.isNullOrBlank() && f.acodec != "none" &&
+                        (f.vcodec.isNullOrBlank() || f.vcodec == "none")
+                }
+                .maxByOrNull { it.tbr }
+                ?.url
+
+            // Kumpulkan opsi resolusi per tinggi piksel (muxed mp4, muxed HLS live, atau adaptive video+audio)
             val candidatesByHeight = formats
                 .filter { f ->
                     val stream = f.url?.takeIf { it.isNotBlank() }
                     val hasVideo = !f.vcodec.isNullOrBlank() && f.vcodec != "none"
                     val hasAudio = !f.acodec.isNullOrBlank() && f.acodec != "none"
+                    val hlsStream = isHlsUrl(stream)
                     stream != null &&
                         hasVideo &&
                         f.height >= 144 &&
                         f.ext != "mhtml" &&
-                        (hasAudio || !bestAudioUrl.isNullOrBlank())
+                        (hasAudio || (hlsStream && !bestHlsAudioUrl.isNullOrBlank()) || (!hlsStream && !bestProgressiveAudioUrl.isNullOrBlank()) || hlsStream)
                 }
                 .groupBy { it.height }
 
@@ -209,7 +279,8 @@ object YoutubeDlManager {
                 .sortedByDescending { it.key }
                 .mapNotNull { (height, list) ->
                     val bestForHeight = list.sortedWith(
-                        compareByDescending<VideoFormat> { !it.acodec.isNullOrBlank() && it.acodec != "none" && it.ext == "mp4" }
+                        compareByDescending<VideoFormat> { !it.acodec.isNullOrBlank() && it.acodec != "none" && !isHlsUrl(it.url) && it.ext == "mp4" }
+                            .thenByDescending { !it.acodec.isNullOrBlank() && it.acodec != "none" && isHlsUrl(it.url) }
                             .thenByDescending { it.vcodec?.startsWith("avc") == true }
                             .thenByDescending { it.ext == "mp4" }
                             .thenByDescending { !(it.vcodec?.startsWith("av01") == true) }
@@ -218,15 +289,21 @@ object YoutubeDlManager {
 
                     val isMuxed = !bestForHeight.acodec.isNullOrBlank() && bestForHeight.acodec != "none"
                     val resolvedVideoUrl = bestForHeight.url ?: return@mapNotNull null
+                    val resolvedAudioUrl = when {
+                        isMuxed -> null
+                        isHlsUrl(resolvedVideoUrl) -> bestHlsAudioUrl
+                        else -> bestProgressiveAudioUrl
+                    }
                     StreamQualityOption(
                         label = "${height}p",
                         height = height,
                         videoUrl = resolvedVideoUrl,
-                        audioUrl = if (isMuxed) null else bestAudioUrl
+                        audioUrl = resolvedAudioUrl
                     )
                 }
 
             val fallbackUrl = info.url?.takeIf { it.isNotBlank() }
+                ?: info.manifestUrl?.takeIf { it.isNotBlank() }
                 ?: formats.lastOrNull {
                     !it.url.isNullOrBlank() &&
                         it.acodec != "none" &&
@@ -237,7 +314,7 @@ object YoutubeDlManager {
             val resolvedOptions = if (qualityOptions.isNotEmpty()) {
                 qualityOptions
             } else if (!fallbackUrl.isNullOrBlank()) {
-                val h = info.height.takeIf { it >= 144 } ?: 360
+                val h = info.height.takeIf { it >= 144 } ?: 720
                 listOf(StreamQualityOption(label = "${h}p", height = h, videoUrl = fallbackUrl, audioUrl = null))
             } else {
                 emptyList()
@@ -251,7 +328,14 @@ object YoutubeDlManager {
             val resolvedId = info.id?.takeIf { it.isNotBlank() } ?: fallbackId
             val resolvedChannelId = info.uploaderId?.takeIf { it.startsWith("UC") } ?: ""
             val durationSec = info.duration.toLong().coerceAtLeast(0L)
-            val formattedDuration = if (durationSec > 0) {
+            val isLive = durationSec == 0L && (
+                isHlsUrl(activeQuality.videoUrl) ||
+                    isDashUrl(activeQuality.videoUrl) ||
+                    !info.manifestUrl.isNullOrBlank()
+                )
+            val formattedDuration = if (isLive) {
+                "LIVE"
+            } else if (durationSec > 0) {
                 val h = durationSec / 3600
                 val m = (durationSec % 3600) / 60
                 val s = durationSec % 60
@@ -260,7 +344,7 @@ object YoutubeDlManager {
                 ""
             }
 
-            ResolvedYoutubeVideo(
+            val resolved = ResolvedYoutubeVideo(
                 videoId = resolvedId,
                 title = info.title?.takeIf { it.isNotBlank() } ?: "Video YouTube ($resolvedId)",
                 channel = info.uploader?.takeIf { it.isNotBlank() } ?: "YouTube",
@@ -271,12 +355,220 @@ object YoutubeDlManager {
                 streamUrl = activeQuality.videoUrl,
                 audioStreamUrl = activeQuality.audioUrl,
                 activeQuality = activeQuality,
-                qualityOptions = resolvedOptions
+                qualityOptions = resolvedOptions,
+                isLive = isLive
             )
+            streamCache[cacheKey] = System.currentTimeMillis() to resolved
+            resolved
         } catch (e: Throwable) {
             Log.e(TAG, "Gagal mengambil stream URL: ${e.message}", e)
             null
         }
+    }
+
+    /**
+     * Memuat URL stream ke cache lebih awal di background agar perpindahan video berikutnya instan.
+     */
+    suspend fun prefetchPlayableVideo(
+        context: Context,
+        videoUrl: String,
+        preferredHeight: Int = 720
+    ) {
+        try {
+            resolvePlayableVideo(context, videoUrl, preferredHeight)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun resolveViaInnertubePlayerFast(
+        videoId: String,
+        preferredHeight: Int
+    ): ResolvedYoutubeVideo? {
+        val clients = listOf(
+            Triple(
+                "ANDROID_VR",
+                "1.60.19",
+                "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+            ),
+            Triple(
+                "IOS",
+                "19.45.4",
+                "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)"
+            )
+        )
+
+        for ((clientName, clientVersion, userAgent) in clients) {
+            try {
+                val payload = JSONObject().apply {
+                    put("context", JSONObject().apply {
+                        put("client", JSONObject().apply {
+                            put("clientName", clientName)
+                            put("clientVersion", clientVersion)
+                            put("hl", "id")
+                            put("gl", "ID")
+                            if (clientName == "ANDROID_VR") {
+                                put("androidSdkVersion", 32)
+                            } else if (clientName == "IOS") {
+                                put("deviceMake", "Apple")
+                                put("deviceModel", "iPhone16,2")
+                                put("osName", "iPhone")
+                                put("osVersion", "18.1.0.22B83")
+                            }
+                        })
+                    })
+                    put("videoId", videoId)
+                    put("contentCheckOk", true)
+                    put("racyCheckOk", true)
+                }
+
+                val conn = (URL("https://www.youtube.com/youtubei/v1/player?prettyPrint=false").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 4500
+                    readTimeout = 4500
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("User-Agent", userAgent)
+                }
+
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
+                    writer.write(payload.toString())
+                    writer.flush()
+                }
+
+                if (conn.responseCode !in 200..299) continue
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(body)
+
+                val playability = root.optJSONObject("playabilityStatus")?.optString("status", "")
+                if (playability != "OK") continue
+
+                val videoDetails = root.optJSONObject("videoDetails")
+                val streamingData = root.optJSONObject("streamingData") ?: continue
+                val isLive = videoDetails?.optBoolean("isLiveContent", false) == true &&
+                    (videoDetails.optString("lengthSeconds", "0").toLongOrNull() ?: 0L) == 0L
+
+                val hlsManifestUrl = streamingData.optString("hlsManifestUrl", "").takeIf { it.isNotBlank() }
+                if (isLive && hlsManifestUrl != null) {
+                    val liveOpt = StreamQualityOption(label = "Auto", height = 720, videoUrl = hlsManifestUrl, audioUrl = null)
+                    return ResolvedYoutubeVideo(
+                        videoId = videoId,
+                        title = videoDetails?.optString("title", "").orEmpty().ifBlank { "Live YouTube ($videoId)" },
+                        channel = videoDetails?.optString("author", "").orEmpty().ifBlank { "YouTube" },
+                        channelId = videoDetails?.optString("channelId", "").orEmpty(),
+                        thumbnailUrl = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
+                        durationText = "LIVE",
+                        streamUrl = hlsManifestUrl,
+                        audioStreamUrl = null,
+                        activeQuality = liveOpt,
+                        qualityOptions = listOf(liveOpt),
+                        isLive = true,
+                        userAgent = userAgent
+                    )
+                }
+
+                val muxed = streamingData.optJSONArray("formats") ?: JSONArray()
+                val adaptive = streamingData.optJSONArray("adaptiveFormats") ?: JSONArray()
+
+                // Cari audio terbaik (MP4/AAC diutamakan)
+                var bestAudioUrl: String? = null
+                var bestAudioBitrate = -1L
+                for (i in 0 until adaptive.length()) {
+                    val f = adaptive.optJSONObject(i) ?: continue
+                    val url = f.optString("url", "")
+                    val mime = f.optString("mimeType", "")
+                    if (url.isBlank() || !mime.startsWith("audio/")) continue
+                    val isM4a = mime.contains("mp4a", ignoreCase = true)
+                    val bitrate = f.optLong("bitrate", 0L) + if (isM4a) 1_000_000L else 0L
+                    if (bitrate > bestAudioBitrate) {
+                        bestAudioBitrate = bitrate
+                        bestAudioUrl = url
+                    }
+                }
+
+                val optionsByHeight = mutableMapOf<Int, Pair<Int, StreamQualityOption>>()
+
+                fun considerFormat(f: JSONObject, isMuxed: Boolean) {
+                    val url = f.optString("url", "")
+                    val mime = f.optString("mimeType", "")
+                    if (url.isBlank() || !mime.startsWith("video/")) return
+                    val height = f.optInt("height", 0)
+                    if (height < 144) return
+                    if (!isMuxed && bestAudioUrl.isNullOrBlank()) return
+
+                    val isMp4 = mime.contains("video/mp4", ignoreCase = true)
+                    val isAvc = mime.contains("avc1", ignoreCase = true)
+                    val isAv1 = mime.contains("av01", ignoreCase = true)
+                    val score = (if (isMuxed && isMp4) 10000 else 0) +
+                        (if (isAvc) 1000 else 0) +
+                        (if (isMp4) 500 else 0) +
+                        (if (!isAv1) 200 else 0)
+
+                    val existing = optionsByHeight[height]
+                    if (existing == null || score > existing.first) {
+                        optionsByHeight[height] = score to StreamQualityOption(
+                            label = "${height}p",
+                            height = height,
+                            videoUrl = url,
+                            audioUrl = if (isMuxed) null else bestAudioUrl
+                        )
+                    }
+                }
+
+                for (i in 0 until muxed.length()) {
+                    muxed.optJSONObject(i)?.let { considerFormat(it, isMuxed = true) }
+                }
+                for (i in 0 until adaptive.length()) {
+                    adaptive.optJSONObject(i)?.let { considerFormat(it, isMuxed = false) }
+                }
+
+                val qualityOptions = optionsByHeight.entries
+                    .sortedByDescending { it.key }
+                    .map { it.value.second }
+
+                val finalOptions = if (qualityOptions.isNotEmpty()) {
+                    qualityOptions
+                } else if (hlsManifestUrl != null) {
+                    listOf(StreamQualityOption(label = "Auto", height = 720, videoUrl = hlsManifestUrl, audioUrl = null))
+                } else {
+                    emptyList()
+                }
+
+                if (finalOptions.isEmpty()) continue
+
+                val activeQuality = finalOptions.firstOrNull { it.height <= preferredHeight }
+                    ?: finalOptions.last()
+
+                val durationSec = videoDetails?.optString("lengthSeconds", "0")?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                val formattedDuration = if (isLive) {
+                    "LIVE"
+                } else if (durationSec > 0L) {
+                    val h = durationSec / 3600
+                    val m = (durationSec % 3600) / 60
+                    val s = durationSec % 60
+                    if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%d:%02d", m, s)
+                } else {
+                    ""
+                }
+
+                return ResolvedYoutubeVideo(
+                    videoId = videoId,
+                    title = videoDetails?.optString("title", "").orEmpty().ifBlank { "Video YouTube ($videoId)" },
+                    channel = videoDetails?.optString("author", "").orEmpty().ifBlank { "YouTube" },
+                    channelId = videoDetails?.optString("channelId", "").orEmpty(),
+                    thumbnailUrl = "https://img.youtube.com/vi/$videoId/hqdefault.jpg",
+                    durationText = formattedDuration,
+                    streamUrl = activeQuality.videoUrl,
+                    audioStreamUrl = activeQuality.audioUrl,
+                    activeQuality = activeQuality,
+                    qualityOptions = finalOptions,
+                    isLive = isLive,
+                    userAgent = userAgent
+                )
+            } catch (e: Throwable) {
+                Log.w(TAG, "Fast Innertube /player ($clientName) gagal untuk $videoId: ${e.message}")
+            }
+        }
+        return null
     }
 
     /**

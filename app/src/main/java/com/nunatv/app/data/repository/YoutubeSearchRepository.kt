@@ -24,7 +24,15 @@ data class YoutubeSearchItem(
     val channelId: String = ""
 ) {
     val watchUrl: String
-        get() = "https://www.youtube.com/watch?v=$videoId"
+        get() = if (isShort) {
+            "https://www.youtube.com/shorts/$videoId"
+        } else {
+            "https://www.youtube.com/watch?v=$videoId"
+        }
+
+    val isShort: Boolean
+        get() = durationText.equals("SHORTS", ignoreCase = true) ||
+            title.contains("#shorts", ignoreCase = true)
 }
 
 enum class YoutubeContentFilter(val label: String) {
@@ -386,6 +394,44 @@ object YoutubeSearchRepository {
         }
     }
 
+    /**
+     * Mengambil daftar video YouTube Shorts (vertikal) berdasarkan topik atau tren terkini.
+     */
+    suspend fun getShortsFeed(context: Context, topic: String = ""): Result<List<YoutubeSearchItem>> = withContext(Dispatchers.IO) {
+        val query = topic.trim()
+            .takeIf { it.isNotBlank() }
+            ?.let { "$it #shorts" }
+            ?: "shorts trending indonesia #shorts"
+
+        try {
+            val raw = searchViaInnertube(query)
+            val normalized = raw
+                .filter { item ->
+                    val sec = parseDurationSeconds(item.durationText)
+                    item.isShort || (sec != null && sec in 1L..75L)
+                }
+                .map { item ->
+                    if (item.isShort) item else item.copy(durationText = "SHORTS")
+                }
+            if (normalized.isNotEmpty()) {
+                return@withContext Result.success(normalized)
+            }
+            if (raw.isNotEmpty()) {
+                return@withContext Result.success(raw.take(18).map { it.copy(durationText = "SHORTS") })
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Innertube shorts fallback ke yt-dlp: ${e.message}")
+        }
+
+        try {
+            val fallback = searchViaYtDlp(context, query)
+                .map { it.copy(durationText = "SHORTS") }
+            Result.success(fallback)
+        } catch (e: Throwable) {
+            Result.failure(e)
+        }
+    }
+
     private fun searchViaInnertube(query: String): List<YoutubeSearchItem> {
         val connection = (URL(INNERTUBE_SEARCH_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -432,7 +478,7 @@ object YoutubeSearchRepository {
         out: MutableList<YoutubeSearchItem>,
         seenIds: MutableSet<String>
     ) {
-        if (out.size >= 24) return
+        if (out.size >= 36) return
         when (node) {
             is JSONObject -> {
                 val renderer = node.optJSONObject("videoRenderer")
@@ -445,10 +491,34 @@ object YoutubeSearchRepository {
                         }
                     }
                 }
+
+                val reelRenderer = node.optJSONObject("reelItemRenderer")
+                if (reelRenderer != null) {
+                    parseReelItemRenderer(reelRenderer)?.let { item ->
+                        if (seenIds.add(item.videoId)) {
+                            out.add(item)
+                        }
+                    }
+                }
+
+                val shortsLockup = node.optJSONObject("shortsLockupViewModel")
+                if (shortsLockup != null) {
+                    parseShortsLockupViewModel(shortsLockup)?.let { item ->
+                        if (seenIds.add(item.videoId)) {
+                            out.add(item)
+                        }
+                    }
+                }
+
                 val keys = node.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
-                    if (key != "videoRenderer" && key != "compactVideoRenderer" && key != "gridVideoRenderer") {
+                    if (key != "videoRenderer" &&
+                        key != "compactVideoRenderer" &&
+                        key != "gridVideoRenderer" &&
+                        key != "reelItemRenderer" &&
+                        key != "shortsLockupViewModel"
+                    ) {
                         extractVideoRenderers(node.opt(key), out, seenIds)
                     }
                 }
@@ -459,6 +529,80 @@ object YoutubeSearchRepository {
                 }
             }
         }
+    }
+
+    private fun parseReelItemRenderer(renderer: JSONObject): YoutubeSearchItem? {
+        val videoId = renderer.optString("videoId", "")
+            .ifBlank {
+                renderer.optJSONObject("navigationEndpoint")
+                    ?.optJSONObject("reelWatchEndpoint")
+                    ?.optString("videoId", "") ?: ""
+            }
+        if (videoId.isBlank()) return null
+
+        val title = readTextRuns(renderer.optJSONObject("headline"))
+            .ifBlank {
+                renderer.optJSONObject("accessibility")
+                    ?.optJSONObject("accessibilityData")
+                    ?.optString("label", "") ?: ""
+            }
+            .ifBlank { "YouTube Shorts ($videoId)" }
+
+        val viewCount = readTextRuns(renderer.optJSONObject("viewCountText"))
+        val thumbs = renderer.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
+        val thumbUrl = if (thumbs != null && thumbs.length() > 0) {
+            thumbs.optJSONObject(thumbs.length() - 1)?.optString("url", "").orEmpty()
+        } else {
+            ""
+        }.ifBlank { "https://i.ytimg.com/vi/$videoId/hqdefault.jpg" }
+
+        return YoutubeSearchItem(
+            videoId = videoId,
+            title = title,
+            channel = "Shorts",
+            durationText = "SHORTS",
+            viewCountText = viewCount,
+            thumbnailUrl = thumbUrl
+        )
+    }
+
+    private fun parseShortsLockupViewModel(vm: JSONObject): YoutubeSearchItem? {
+        val watchEndpoint = vm.optJSONObject("onTap")
+            ?.optJSONObject("innertubeCommand")
+            ?.optJSONObject("reelWatchEndpoint")
+        val videoId = watchEndpoint?.optString("videoId", "").orEmpty()
+            .ifBlank {
+                vm.optString("entityId", "")
+                    .removePrefix("shorts-lockup-ui-model-")
+                    .takeIf { it.length == 11 }
+                    .orEmpty()
+            }
+        if (videoId.isBlank()) return null
+
+        val overlay = vm.optJSONObject("overlayMetadata")
+        val primaryTitle = overlay?.optJSONObject("primaryText")?.optString("content", "").orEmpty()
+            .ifBlank { vm.optString("accessibilityText", "").substringBefore(", ") }
+            .ifBlank { "YouTube Shorts ($videoId)" }
+        val viewCount = overlay?.optJSONObject("secondaryText")?.optString("content", "").orEmpty()
+
+        val sources = vm.optJSONObject("thumbnail")?.optJSONArray("sources")
+        val endpointThumbs = watchEndpoint?.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
+        val thumbUrl = when {
+            sources != null && sources.length() > 0 ->
+                sources.optJSONObject(sources.length() - 1)?.optString("url", "").orEmpty()
+            endpointThumbs != null && endpointThumbs.length() > 0 ->
+                endpointThumbs.optJSONObject(endpointThumbs.length() - 1)?.optString("url", "").orEmpty()
+            else -> ""
+        }.ifBlank { "https://i.ytimg.com/vi/$videoId/hqdefault.jpg" }
+
+        return YoutubeSearchItem(
+            videoId = videoId,
+            title = primaryTitle,
+            channel = "Shorts",
+            durationText = "SHORTS",
+            viewCountText = viewCount,
+            thumbnailUrl = thumbUrl
+        )
     }
 
     private fun extractBrowseIdFromRuns(obj: JSONObject?): String {
@@ -494,27 +638,35 @@ object YoutubeSearchRepository {
             .ifBlank { extractBrowseIdFromRuns(longBylineObj) }
             .ifBlank { extractBrowseIdFromRuns(shortBylineObj) }
 
-        val duration = readTextRuns(renderer.optJSONObject("lengthText"))
-            .ifBlank { renderer.optJSONObject("lengthText")?.optString("simpleText", "") ?: "" }
-            .ifBlank {
-                val overlays = renderer.optJSONArray("thumbnailOverlays")
-                var overlayDur = ""
-                if (overlays != null) {
-                    for (i in 0 until overlays.length()) {
-                        val timeText = readTextRuns(
-                            overlays.optJSONObject(i)
+        val isReelEndpoint = renderer.optJSONObject("navigationEndpoint")?.has("reelWatchEndpoint") == true
+        val duration = if (isReelEndpoint) {
+            "SHORTS"
+        } else {
+            readTextRuns(renderer.optJSONObject("lengthText"))
+                .ifBlank { renderer.optJSONObject("lengthText")?.optString("simpleText", "") ?: "" }
+                .ifBlank {
+                    val overlays = renderer.optJSONArray("thumbnailOverlays")
+                    var overlayDur = ""
+                    if (overlays != null) {
+                        for (i in 0 until overlays.length()) {
+                            val overlayRenderer = overlays.optJSONObject(i)
                                 ?.optJSONObject("thumbnailOverlayTimeStatusRenderer")
-                                ?.optJSONObject("text")
-                        )
-                        if (timeText.isNotBlank()) {
-                            overlayDur = timeText
-                            break
+                            val style = overlayRenderer?.optString("style", "") ?: ""
+                            if (style.equals("SHORTS", ignoreCase = true)) {
+                                overlayDur = "SHORTS"
+                                break
+                            }
+                            val timeText = readTextRuns(overlayRenderer?.optJSONObject("text"))
+                            if (timeText.isNotBlank()) {
+                                overlayDur = timeText
+                                break
+                            }
                         }
                     }
+                    overlayDur
                 }
-                overlayDur
-            }
-            .ifBlank { "LIVE" }
+                .ifBlank { "LIVE" }
+        }
 
         val viewCount = readTextRuns(renderer.optJSONObject("shortViewCountText"))
             .ifBlank { readTextRuns(renderer.optJSONObject("viewCountText")) }

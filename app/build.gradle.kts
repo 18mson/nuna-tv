@@ -14,8 +14,8 @@ android {
         applicationId = "com.nunatv.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -110,9 +110,12 @@ dependencies {
     // WorkManager (Background execution)
     implementation(libs.androidx.work.runtime.ktx)
 
-    // Media3 ExoPlayer (Video Player)
+    // Media3 ExoPlayer (Video Player + HLS/DASH Live Stream) & Media Compat (MediaSession + Notifikasi)
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.hls)
+    implementation(libs.androidx.media3.dash)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media.compat)
 
     // DataStore (Settings / Preferences)
     implementation(libs.androidx.datastore.preferences)

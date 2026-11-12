@@ -1,7 +1,5 @@
 package com.nunatv.app.ui.screens.player
 
-import android.media.audiofx.LoudnessEnhancer
-import android.net.Uri
 import android.view.KeyEvent
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -13,12 +11,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -51,21 +47,27 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -79,7 +81,6 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,53 +96,58 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.nunatv.app.data.local.DownloadedVideoEntity
 import com.nunatv.app.data.preferences.AudioBoostLevel
 import com.nunatv.app.downloader.StreamQualityOption
-import com.nunatv.app.ui.components.DownloadPromptBanner
+import com.nunatv.app.player.MediaPlaybackManager
+import com.nunatv.app.player.MediaPlaybackState
 import com.nunatv.app.ui.components.FocusStyle
 import com.nunatv.app.ui.components.dpadFocusable
 import com.nunatv.app.util.DeviceUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
 
 @OptIn(UnstableApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun PlayerScreen(
-    currentVideo: DownloadedVideoEntity,
-    allVideos: List<DownloadedVideoEntity>,
+    playbackState: MediaPlaybackState,
     onVideoChange: (DownloadedVideoEntity) -> Unit,
     onBack: () -> Unit,
+    onMinimizeToMiniPlayer: () -> Unit,
     modifier: Modifier = Modifier,
-    isRemoteStream: Boolean = false,
     downloadResolutionLabel: String = "1080p",
-    audioBoostLevel: AudioBoostLevel = AudioBoostLevel.OFF,
+    isInPictureInPictureMode: Boolean = false,
+    pipEnabled: Boolean = false,
+    onEnterPip: (() -> Unit)? = null,
+    onRetryStream: () -> Unit = {},
     onAudioBoostChange: ((AudioBoostLevel) -> Unit)? = null,
-    activeAudioStreamUrl: String? = null,
-    streamQualityOptions: List<StreamQualityOption> = emptyList(),
-    activeStreamQuality: StreamQualityOption? = null,
-    activeChannelId: String = "",
     onSelectStreamQuality: ((StreamQualityOption) -> Unit)? = null,
     onOpenChannel: ((channelId: String, channelName: String, videoId: String) -> Unit)? = null,
     onTriggerDownload: (() -> Unit)? = null
 ) {
+    val currentVideo = playbackState.currentVideo ?: return
+    val allVideos = playbackState.playlist
+    val isRemoteStream = playbackState.isRemoteStream
+    val isLiveStream = playbackState.isLiveStream
+    val isShortStream = playbackState.isShortStream
+    val isLoadingStream = playbackState.isLoadingStream
+    val streamLoadError = playbackState.streamLoadError
+    val audioBoostLevel = playbackState.audioBoostLevel
+    val streamQualityOptions = playbackState.streamQualityOptions
+    val activeStreamQuality = playbackState.activeStreamQuality
+    val activeChannelId = playbackState.activeChannelId
+    val isAutoplayEnabled = playbackState.isAutoplayEnabled
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isTv = remember { DeviceUtils.isTvDevice(context) }
@@ -168,29 +174,24 @@ fun PlayerScreen(
         }
     }
 
-    // State Video Player
-    var isPlaying by remember { mutableStateOf(true) }
-    var currentPositionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(0L) }
+    // State Video Player berasal dari MediaPlaybackManager
+    val isPlaying = playbackState.isPlaying
+    val currentPositionMs = playbackState.currentPositionMs
+    val durationMs = playbackState.durationMs
     var isSeeking by remember { mutableStateOf(false) }
     var seekPositionMs by remember { mutableLongStateOf(0L) }
 
-    // State Kontrol & Autoplay & Download Banner
-    var showDownloadBanner by remember(currentVideo.videoId, isRemoteStream) {
-        mutableStateOf(isRemoteStream && onTriggerDownload != null)
-    }
+    // State Kontrol & Autoplay
     var showControls by remember { mutableStateOf(!isRemoteStream) }
     var showRecommendations by remember { mutableStateOf(false) }
     var showTopMenu by remember { mutableStateOf(false) }
-    var isAutoplayEnabled by rememberSaveable { mutableStateOf(true) }
     var showAutoplayCountdown by remember { mutableStateOf(false) }
-    var autoplayDismissedForCurrentVideo by remember(currentVideo.localFilePath) { mutableStateOf(false) }
+    var autoplayDismissedForCurrentVideo by remember(currentVideo.id, currentVideo.localFilePath) {
+        mutableStateOf(false)
+    }
     var countdownSeconds by remember { mutableIntStateOf(5) }
     var interactionTick by remember { mutableIntStateOf(0) }
     var longPressHint by remember { mutableStateOf<String?>(null) }
-
-    var lastLoadedVideoId by remember { mutableStateOf("") }
-    var pendingSeekAfterQualitySwitchMs by remember { mutableLongStateOf(0L) }
 
     var longPressJob by remember { mutableStateOf<Job?>(null) }
     var longPressTriggered by remember { mutableStateOf(false) }
@@ -201,7 +202,8 @@ fun PlayerScreen(
     val topMenuChannelFocusRequester = remember { FocusRequester() }
     val topMenuQualityFocusRequester = remember { FocusRequester() }
 
-    val isOverlayActive = showDownloadBanner || showAutoplayCountdown || showRecommendations || showTopMenu
+    val isOverlayActive = !isInPictureInPictureMode &&
+        (showAutoplayCountdown || showRecommendations || showTopMenu)
 
     // Kembalikan fokus ke Video setiap kali popup/menu selesai atau ditutup
     LaunchedEffect(isOverlayActive, currentVideo.localFilePath) {
@@ -214,170 +216,73 @@ fun PlayerScreen(
         }
     }
 
+    // Tutup overlay sementara saat masuk mode PiP agar jendela PiP bersih
+    LaunchedEffect(isInPictureInPictureMode) {
+        if (isInPictureInPictureMode) {
+            showControls = false
+            showTopMenu = false
+            showRecommendations = false
+            showAutoplayCountdown = false
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             longPressJob?.cancel()
         }
     }
 
-    val exoPlayer = remember {
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(C.USAGE_MEDIA)
-            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-            .build()
-        ExoPlayer.Builder(context)
-            .setAudioAttributes(audioAttributes, true)
-            .build()
-    }
-    var audioSessionId by remember { mutableIntStateOf(exoPlayer.audioSessionId) }
-    var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
+    val exoPlayer = remember { MediaPlaybackManager.ensurePlayer(context) }
 
-    DisposableEffect(audioSessionId) {
-        val enhancer = if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId > 0) {
-            try {
-                LoudnessEnhancer(audioSessionId)
-            } catch (_: Throwable) {
-                null
-            }
-        } else {
-            null
-        }
-        loudnessEnhancer = enhancer
-        onDispose {
-            if (loudnessEnhancer === enhancer) {
-                loudnessEnhancer = null
-            }
-            try {
-                enhancer?.release()
-            } catch (_: Throwable) {
-            }
-        }
-    }
-
-    LaunchedEffect(loudnessEnhancer, audioBoostLevel) {
-        val enhancer = loudnessEnhancer ?: return@LaunchedEffect
-        try {
-            if (audioBoostLevel.targetGainMb > 0) {
-                enhancer.setTargetGain(audioBoostLevel.targetGainMb)
-                enhancer.enabled = true
-            } else {
-                enhancer.setTargetGain(0)
-                enhancer.enabled = false
-            }
-        } catch (_: Throwable) {
-        }
-    }
-
-    val httpDataSourceFactory = remember {
-        DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
-    }
-
-    // Inisialisasi dan Pergantian Video (Mendukung file lokal, stream muxed, & adaptive video+audio)
-    LaunchedEffect(currentVideo.localFilePath, activeAudioStreamUrl) {
-        val isSameVideoQualitySwitch = lastLoadedVideoId == currentVideo.videoId && lastLoadedVideoId.isNotEmpty()
-        if (!isSameVideoQualitySwitch) {
-            showAutoplayCountdown = false
-        }
-        val audioUrl = activeAudioStreamUrl
-        if (!audioUrl.isNullOrBlank() && currentVideo.localFilePath.startsWith("http")) {
-            val videoSource = ProgressiveMediaSource.Factory(httpDataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(Uri.parse(currentVideo.localFilePath)))
-            val audioSource = ProgressiveMediaSource.Factory(httpDataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(Uri.parse(audioUrl)))
-            exoPlayer.setMediaSource(MergingMediaSource(videoSource, audioSource))
-        } else {
-            val mediaUri = if (
-                currentVideo.localFilePath.startsWith("http://") ||
-                currentVideo.localFilePath.startsWith("https://")
-            ) {
-                Uri.parse(currentVideo.localFilePath)
-            } else {
-                Uri.fromFile(File(currentVideo.localFilePath))
-            }
-            exoPlayer.setMediaItem(MediaItem.fromUri(mediaUri))
-        }
-        exoPlayer.prepare()
-        if (isSameVideoQualitySwitch && pendingSeekAfterQualitySwitchMs > 0L) {
-            exoPlayer.seekTo(pendingSeekAfterQualitySwitchMs)
-            pendingSeekAfterQualitySwitchMs = 0L
-        }
-        lastLoadedVideoId = currentVideo.videoId
-        exoPlayer.playWhenReady = true
-        isPlaying = true
-    }
-
-    // Listener Status Pemutaran ExoPlayer
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onAudioSessionIdChanged(sessionId: Int) {
-                audioSessionId = sessionId
-            }
-
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) {
-                    durationMs = exoPlayer.duration.coerceAtLeast(0L)
-                    if (exoPlayer.audioSessionId != C.AUDIO_SESSION_ID_UNSET && exoPlayer.audioSessionId > 0) {
-                        audioSessionId = exoPlayer.audioSessionId
-                    }
-                } else if (playbackState == Player.STATE_ENDED) {
-                    if (isAutoplayEnabled && recommendations.isNotEmpty() && !autoplayDismissedForCurrentVideo && !showAutoplayCountdown) {
-                        showAutoplayCountdown = true
-                    }
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
-        }
-    }
-
-    // Loop Update Posisi Pemutaran Tiap 500ms & Munculkan Popup Autoplay 5 Detik Sebelum Selesai
-    LaunchedEffect(isPlaying, isSeeking, isAutoplayEnabled, recommendations, autoplayDismissedForCurrentVideo) {
-        while (isPlaying && !isSeeking) {
-            currentPositionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-            durationMs = exoPlayer.duration.coerceAtLeast(0L)
-
+    // Munculkan Popup Autoplay 5 Detik Sebelum Video Selesai (saat Player terbuka dan bukan Live/PiP)
+    LaunchedEffect(
+        currentPositionMs,
+        durationMs,
+        isPlaying,
+        isSeeking,
+        isLiveStream,
+        isAutoplayEnabled,
+        isLoadingStream,
+        streamLoadError,
+        isInPictureInPictureMode,
+        recommendations,
+        autoplayDismissedForCurrentVideo
+    ) {
+        if (isPlaying &&
+            !isSeeking &&
+            !isLiveStream &&
+            !isLoadingStream &&
+            streamLoadError == null &&
+            !isInPictureInPictureMode &&
+            isAutoplayEnabled &&
+            recommendations.isNotEmpty() &&
+            durationMs > 6000L
+        ) {
             val remainingMs = durationMs - currentPositionMs
-            if (isAutoplayEnabled &&
-                recommendations.isNotEmpty() &&
-                durationMs > 6000L &&
-                remainingMs in 1L..5500L &&
-                !showAutoplayCountdown &&
-                !autoplayDismissedForCurrentVideo
-            ) {
+            if (remainingMs in 1L..5500L && !showAutoplayCountdown && !autoplayDismissedForCurrentVideo) {
                 showControls = false
                 showAutoplayCountdown = true
             }
-
-            delay(500)
         }
     }
 
     // Auto-hide Controls setelah 4 detik tidak ada interaksi
-    LaunchedEffect(showControls, isPlaying, showRecommendations, interactionTick) {
-        if (showControls && isPlaying && !showRecommendations) {
+    LaunchedEffect(showControls, isPlaying, showRecommendations, isLoadingStream, interactionTick) {
+        if (showControls && isPlaying && !showRecommendations && !isLoadingStream) {
             delay(4000)
             showControls = false
         }
     }
 
     // Hitung Mundur Autoplay (5 Detik)
-    LaunchedEffect(showAutoplayCountdown, nextVideo) {
-        if (showAutoplayCountdown && nextVideo != null) {
+    LaunchedEffect(showAutoplayCountdown, nextVideo, isInPictureInPictureMode) {
+        if (showAutoplayCountdown && nextVideo != null && !isInPictureInPictureMode) {
             countdownSeconds = 5
-            while (countdownSeconds > 0 && showAutoplayCountdown) {
+            while (countdownSeconds > 0 && showAutoplayCountdown && !isInPictureInPictureMode) {
                 delay(1000)
                 countdownSeconds--
             }
-            if (showAutoplayCountdown) {
+            if (showAutoplayCountdown && !isInPictureInPictureMode) {
                 showAutoplayCountdown = false
                 onVideoChange(nextVideo)
             }
@@ -386,17 +291,13 @@ fun PlayerScreen(
 
     fun handleBackNavigation() {
         when {
-            showDownloadBanner -> showDownloadBanner = false
             showTopMenu -> showTopMenu = false
             showRecommendations -> showRecommendations = false
             showAutoplayCountdown -> {
                 autoplayDismissedForCurrentVideo = true
                 showAutoplayCountdown = false
             }
-            else -> {
-                exoPlayer.stop()
-                onBack()
-            }
+            else -> onBack()
         }
     }
 
@@ -409,14 +310,34 @@ fun PlayerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                // Gestur Sentuh: Swipe ke Bawah atau ke Atas untuk membuka/tutup Rekomendasi
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 25 || dragAmount < -25) {
-                        showRecommendations = true
-                        showControls = false
+            .pointerInput(isShortStream, nextVideo?.id, prevVideo?.id, isInPictureInPictureMode) {
+                if (isInPictureInPictureMode) return@pointerInput
+                var totalDragY = 0f
+                var handledDrag = false
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        totalDragY = 0f
+                        handledDrag = false
+                    },
+                    onVerticalDrag = { _, dragAmount ->
+                        totalDragY += dragAmount
+                        if (!handledDrag && isShortStream) {
+                            if (totalDragY < -90f && nextVideo != null) {
+                                handledDrag = true
+                                onVideoChange(nextVideo)
+                            } else if (totalDragY > 90f && prevVideo != null) {
+                                handledDrag = true
+                                onVideoChange(prevVideo)
+                            }
+                        } else if (!handledDrag && !isShortStream) {
+                            if (totalDragY > 60f || totalDragY < -60f) {
+                                handledDrag = true
+                                showRecommendations = true
+                                showControls = false
+                            }
+                        }
                     }
-                }
+                )
             }
             .onPreviewKeyEvent { keyEvent ->
                 val code = keyEvent.nativeKeyEvent.keyCode
@@ -457,7 +378,7 @@ fun PlayerScreen(
                     code == KeyEvent.KEYCODE_SPACE
                 ) {
                     if (action == KeyEvent.ACTION_DOWN && keyEvent.nativeKeyEvent.repeatCount == 0) {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        MediaPlaybackManager.togglePlayPause()
                         showControls = true
                         interactionTick++
                     }
@@ -519,10 +440,7 @@ fun PlayerScreen(
                         longPressHint = null
                         if (!longPressTriggered) {
                             val offset = if (isRight) 10000L else -10000L
-                            val targetPos = (exoPlayer.currentPosition + offset)
-                                .coerceIn(0L, durationMs.coerceAtLeast(0L))
-                            exoPlayer.seekTo(targetPos)
-                            currentPositionMs = targetPos
+                            MediaPlaybackManager.seekBy(offset)
                             showControls = true
                             interactionTick++
                         }
@@ -538,13 +456,15 @@ fun PlayerScreen(
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
-                .focusProperties { canFocus = !isOverlayActive }
+                .focusProperties { canFocus = !isOverlayActive && !isLoadingStream && streamLoadError == null }
                 .focusRequester(playerFocusRequester)
                 .focusable()
-                .pointerInput(Unit) {
+                .pointerInput(isInPictureInPictureMode, isLoadingStream, streamLoadError) {
                     detectTapGestures {
-                        showControls = !showControls
-                        interactionTick++
+                        if (!isInPictureInPictureMode && !isLoadingStream && streamLoadError == null) {
+                            showControls = !showControls
+                            interactionTick++
+                        }
                     }
                 },
             factory = { ctx ->
@@ -556,12 +476,176 @@ fun PlayerScreen(
                     player = exoPlayer
                     useController = false // Gunakan UI Overlay Compose Kustom yang responsif
                 }
+            },
+            update = { view ->
+                if (view.player !== exoPlayer) {
+                    view.player = exoPlayer
+                }
+                val isPortrait = context.resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_PORTRAIT
+                view.resizeMode = if (isShortStream && isPortrait) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
             }
         )
 
+        // 1b. Loading Stream atau Error Overlay langsung di dalam Player (Instant Open UX)
+        if ((isLoadingStream || streamLoadError != null) && !isInPictureInPictureMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                if (currentVideo.thumbnailUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = currentVideo.thumbnailUrl,
+                        contentDescription = currentVideo.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.72f))
+                )
+
+                // Bar Atas agar pengguna tetap bisa kembali atau perkecil selama loading
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .dpadFocusable(onClick = onBack)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Kembali",
+                            tint = Color.White
+                        )
+                    }
+                    if (!isTv) {
+                        IconButton(
+                            onClick = onMinimizeToMiniPlayer,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .dpadFocusable(onClick = onMinimizeToMiniPlayer)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Perkecil ke Mini Player",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = currentVideo.title,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Status Tengah: Spinner Loading atau Tombol Coba Lagi
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (isLoadingStream) {
+                        CircularProgressIndicator(
+                            color = Color(0xFFE50914),
+                            strokeWidth = 3.5.dp,
+                            modifier = Modifier.size(46.dp)
+                        )
+                        Text(
+                            text = "Menyiapkan video...",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = currentVideo.title,
+                            color = Color.LightGray,
+                            fontSize = 13.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (streamLoadError != null) {
+                        Text(
+                            text = "Gagal memutar video",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = streamLoadError,
+                            color = Color.LightGray,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = onRetryStream,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.dpadFocusable(
+                                    shape = RoundedCornerShape(8.dp),
+                                    style = FocusStyle.CTA,
+                                    onClick = onRetryStream
+                                )
+                            ) {
+                                Text(
+                                    text = "Coba Lagi",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onBack,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.dpadFocusable(
+                                    shape = RoundedCornerShape(8.dp),
+                                    onClick = onBack
+                                )
+                            ) {
+                                Text(
+                                    text = "Kembali",
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 2. Custom Player Controls Overlay (Responsif Portrait Mobile & Landscape/TV)
         AnimatedVisibility(
-            visible = (showControls || !isPlaying) && !showRecommendations,
+            visible = !isInPictureInPictureMode &&
+                !isLoadingStream &&
+                streamLoadError == null &&
+                (showControls || !isPlaying) &&
+                !showRecommendations,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -573,21 +657,21 @@ fun PlayerScreen(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.Black.copy(alpha = 0.8f),
+                                Color.Black.copy(alpha = 0.68f),
                                 Color.Transparent,
-                                Color.Black.copy(alpha = 0.85f)
+                                Color.Black.copy(alpha = 0.78f)
                             )
                         )
                     )
             ) {
                 val isCompact = maxWidth < 600.dp
                 val hasTrackSwitch = allVideos.size > 1 && recommendations.isNotEmpty()
-                val sideBtnSize = if (isCompact) 46.dp else 52.dp
-                val sideIconSize = if (isCompact) 28.dp else 34.dp
-                val playBtnSize = if (isCompact) 64.dp else 72.dp
-                val centerGap = if (isCompact) 10.dp else 24.dp
+                val sideBtnSize = if (isCompact) 44.dp else 52.dp
+                val sideIconSize = if (isCompact) 26.dp else 34.dp
+                val playBtnSize = if (isCompact) 58.dp else 70.dp
+                val centerGap = if (isCompact) 14.dp else 24.dp
 
-                // Top Bar: Baris 1 selalu Back + Judul penuh; Pills reflow ke Baris 2 di layar sempit (HP Portrait)
+                // Top Bar: Baris 1 selalu Back + Judul + Perkecil/Popup (Mobile); Pills reflow ke Baris 2 di layar sempit
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -604,16 +688,10 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = {
-                                exoPlayer.stop()
-                                onBack()
-                            },
+                            onClick = onBack,
                             modifier = Modifier
                                 .size(48.dp)
-                                .dpadFocusable(onClick = {
-                                    exoPlayer.stop()
-                                    onBack()
-                                })
+                                .dpadFocusable(onClick = onBack)
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -636,6 +714,9 @@ fun PlayerScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             val subtitleText = buildString {
+                                if (isLiveStream) {
+                                    append("LIVE • ")
+                                }
                                 append(currentVideo.resolution)
                                 append(" • ")
                                 append(currentVideo.category)
@@ -652,8 +733,33 @@ fun PlayerScreen(
                             )
                         }
 
+                        if (!isTv) {
+                            if (pipEnabled && onEnterPip != null) {
+                                IconButton(
+                                    onClick = onEnterPip,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PictureInPictureAlt,
+                                        contentDescription = "Mode Popup",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = onMinimizeToMiniPlayer,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Perkecil ke Mini Player",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+
                         if (!isCompact) {
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -661,17 +767,19 @@ fun PlayerScreen(
                                 PlayerTopActionPill(
                                     icon = Icons.Default.Tune,
                                     label = if (isRemoteStream) "Channel / Resolusi" else "Channel",
-                                    containerColor = Color(0xFF2E2E2E),
+                                    containerColor = Color.White.copy(alpha = 0.12f),
                                     onClick = {
                                         showControls = false
                                         showTopMenu = true
                                     }
                                 )
                                 if (onAudioBoostChange != null) {
+                                    val boostActive = audioBoostLevel != AudioBoostLevel.OFF
                                     PlayerTopActionPill(
                                         icon = Icons.AutoMirrored.Filled.VolumeUp,
-                                        label = if (audioBoostLevel == AudioBoostLevel.OFF) "Boost: OFF" else "Boost: ${audioBoostLevel.shortLabel}",
-                                        containerColor = if (audioBoostLevel != AudioBoostLevel.OFF) Color(0xFFE50914) else Color(0xFF424242),
+                                        label = if (!boostActive) "Boost: OFF" else "Boost: ${audioBoostLevel.shortLabel}",
+                                        containerColor = if (boostActive) Color(0xCC2A1416) else Color.White.copy(alpha = 0.12f),
+                                        isActive = boostActive,
                                         onClick = {
                                             onAudioBoostChange(audioBoostLevel.next())
                                             interactionTick++
@@ -681,12 +789,25 @@ fun PlayerScreen(
                                 PlayerTopActionPill(
                                     icon = Icons.Default.Autorenew,
                                     label = if (isAutoplayEnabled) "Autoplay: ON" else "Autoplay: OFF",
-                                    containerColor = if (isAutoplayEnabled) Color(0xFF2E7D32) else Color(0xFF424242),
+                                    containerColor = if (isAutoplayEnabled) Color(0xCC182B1B) else Color.White.copy(alpha = 0.12f),
+                                    isActive = isAutoplayEnabled,
+                                    activeColor = Color(0xFF66BB6A),
                                     onClick = {
-                                        isAutoplayEnabled = !isAutoplayEnabled
+                                        MediaPlaybackManager.setAutoplayEnabled(!isAutoplayEnabled)
                                         interactionTick++
                                     }
                                 )
+                                if (onTriggerDownload != null) {
+                                    PlayerTopActionPill(
+                                        icon = Icons.Default.Download,
+                                        label = "Download",
+                                        containerColor = Color.White.copy(alpha = 0.14f),
+                                        onClick = {
+                                            onTriggerDownload()
+                                            interactionTick++
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -701,18 +822,20 @@ fun PlayerScreen(
                         ) {
                             PlayerTopActionPill(
                                 icon = Icons.Default.Tune,
-                                label = if (isRemoteStream) "Channel / Resolusi" else "Channel",
-                                containerColor = Color(0xFF2E2E2E),
+                                label = if (isRemoteStream) "Resolusi" else "Channel",
+                                containerColor = Color.White.copy(alpha = 0.12f),
                                 onClick = {
                                     showControls = false
                                     showTopMenu = true
                                 }
                             )
                             if (onAudioBoostChange != null) {
+                                val boostActive = audioBoostLevel != AudioBoostLevel.OFF
                                 PlayerTopActionPill(
                                     icon = Icons.AutoMirrored.Filled.VolumeUp,
-                                    label = if (audioBoostLevel == AudioBoostLevel.OFF) "Boost: OFF" else "Boost ${audioBoostLevel.shortLabel}",
-                                    containerColor = if (audioBoostLevel != AudioBoostLevel.OFF) Color(0xFFE50914) else Color(0xFF424242),
+                                    label = if (!boostActive) "Boost" else "Boost ${audioBoostLevel.shortLabel}",
+                                    containerColor = if (boostActive) Color(0xCC2A1416) else Color.White.copy(alpha = 0.12f),
+                                    isActive = boostActive,
                                     onClick = {
                                         onAudioBoostChange(audioBoostLevel.next())
                                         interactionTick++
@@ -721,13 +844,26 @@ fun PlayerScreen(
                             }
                             PlayerTopActionPill(
                                 icon = Icons.Default.Autorenew,
-                                label = if (isAutoplayEnabled) "Autoplay ON" else "Autoplay OFF",
-                                containerColor = if (isAutoplayEnabled) Color(0xFF2E7D32) else Color(0xFF424242),
+                                label = if (isAutoplayEnabled) "Autoplay" else "Autoplay OFF",
+                                containerColor = if (isAutoplayEnabled) Color(0xCC182B1B) else Color.White.copy(alpha = 0.12f),
+                                isActive = isAutoplayEnabled,
+                                activeColor = Color(0xFF66BB6A),
                                 onClick = {
-                                    isAutoplayEnabled = !isAutoplayEnabled
+                                    MediaPlaybackManager.setAutoplayEnabled(!isAutoplayEnabled)
                                     interactionTick++
                                 }
                             )
+                            if (onTriggerDownload != null) {
+                                PlayerTopActionPill(
+                                    icon = Icons.Default.Download,
+                                    label = "Download",
+                                    containerColor = Color.White.copy(alpha = 0.14f),
+                                    onClick = {
+                                        onTriggerDownload()
+                                        interactionTick++
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -762,8 +898,7 @@ fun PlayerScreen(
 
                     IconButton(
                         onClick = {
-                            val target = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
-                            exoPlayer.seekTo(target)
+                            MediaPlaybackManager.seekBy(-10000L)
                             interactionTick++
                         },
                         modifier = Modifier
@@ -772,8 +907,7 @@ fun PlayerScreen(
                             .dpadFocusable(
                                 shape = CircleShape,
                                 onClick = {
-                                    val target = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
-                                    exoPlayer.seekTo(target)
+                                    MediaPlaybackManager.seekBy(-10000L)
                                     interactionTick++
                                 }
                             )
@@ -789,18 +923,18 @@ fun PlayerScreen(
                     // Tombol Utama Play / Pause selalu tepat di tengah
                     Surface(
                         onClick = {
-                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            MediaPlaybackManager.togglePlayPause()
                             interactionTick++
                         },
                         shape = CircleShape,
-                        color = Color(0xFFE50914),
-                        shadowElevation = 6.dp,
+                        color = if (isTv) Color(0xFFE50914) else Color.Black.copy(alpha = 0.58f),
+                        border = if (isTv) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                         modifier = Modifier
                             .size(playBtnSize)
                             .dpadFocusable(
                                 shape = CircleShape,
                                 onClick = {
-                                    if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                    MediaPlaybackManager.togglePlayPause()
                                     interactionTick++
                                 }
                             )
@@ -810,15 +944,14 @@ fun PlayerScreen(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (isPlaying) "Pause" else "Play",
                                 tint = Color.White,
-                                modifier = Modifier.size(if (isCompact) 36.dp else 44.dp)
+                                modifier = Modifier.size(if (isCompact) 32.dp else 44.dp)
                             )
                         }
                     }
 
                     IconButton(
                         onClick = {
-                            val target = (exoPlayer.currentPosition + 10000L).coerceAtMost(durationMs)
-                            exoPlayer.seekTo(target)
+                            MediaPlaybackManager.seekBy(10000L)
                             interactionTick++
                         },
                         modifier = Modifier
@@ -827,8 +960,7 @@ fun PlayerScreen(
                             .dpadFocusable(
                                 shape = CircleShape,
                                 onClick = {
-                                    val target = (exoPlayer.currentPosition + 10000L).coerceAtMost(durationMs)
-                                    exoPlayer.seekTo(target)
+                                    MediaPlaybackManager.seekBy(10000L)
                                     interactionTick++
                                 }
                             )
@@ -875,41 +1007,72 @@ fun PlayerScreen(
                             vertical = if (isCompact) 10.dp else 16.dp
                         )
                 ) {
-                    // Slider Seekbar Waktu
-                    Slider(
-                        value = if (isSeeking) seekPositionMs.toFloat() else currentPositionMs.toFloat(),
-                        onValueChange = {
-                            isSeeking = true
-                            seekPositionMs = it.toLong()
-                        },
-                        onValueChangeFinished = {
-                            exoPlayer.seekTo(seekPositionMs)
-                            currentPositionMs = seekPositionMs
-                            isSeeking = false
-                        },
-                        valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFFE50914),
-                            activeTrackColor = Color(0xFFE50914),
-                            inactiveTrackColor = Color.DarkGray
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusProperties { canFocus = false }
-                    )
+                    if (isLiveStream && durationMs <= 0L) {
+                        LinearProgressIndicator(
+                            progress = { 1f },
+                            color = Color(0xFFE50914),
+                            trackColor = Color.DarkGray,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                        )
+                    } else {
+                        val maxRange = durationMs.toFloat().coerceAtLeast(1f)
+                        val sliderPos = (if (isSeeking) seekPositionMs else currentPositionMs)
+                            .toFloat()
+                            .coerceIn(0f, maxRange)
+                        // Slider Seekbar Waktu
+                        Slider(
+                            value = sliderPos,
+                            onValueChange = {
+                                isSeeking = true
+                                seekPositionMs = it.toLong()
+                            },
+                            onValueChangeFinished = {
+                                MediaPlaybackManager.seekTo(seekPositionMs)
+                                isSeeking = false
+                            },
+                            valueRange = 0f..maxRange,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color(0xFFE50914),
+                                activeTrackColor = Color(0xFFE50914),
+                                inactiveTrackColor = Color.DarkGray
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusProperties { canFocus = false }
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${formatTimeMs(if (isSeeking) seekPositionMs else currentPositionMs)} / ${formatTimeMs(durationMs)}",
-                            color = Color.LightGray,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                        if (isLiveStream) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFE50914)
+                            ) {
+                                Text(
+                                    text = "LIVE",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "${formatTimeMs(if (isSeeking) seekPositionMs else currentPositionMs)} / ${formatTimeMs(durationMs)}",
+                                color = Color.LightGray,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
 
                         // Tombol Buka Rekomendasi Video (D-Pad & Touch)
                         if (recommendations.isNotEmpty()) {
@@ -960,7 +1123,7 @@ fun PlayerScreen(
 
         // Indikator Hold Kiri/Kanan (Video Sebelumnya / Berikutnya)
         AnimatedVisibility(
-            visible = longPressHint != null,
+            visible = longPressHint != null && !isInPictureInPictureMode && !isLoadingStream,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
@@ -984,7 +1147,7 @@ fun PlayerScreen(
 
         // 3. Popup Kecil Autoplay Video Berikutnya di Sisi Bawah (Muncul 5 detik sebelum selesai)
         AnimatedVisibility(
-            visible = showAutoplayCountdown && nextVideo != null,
+            visible = showAutoplayCountdown && nextVideo != null && !isInPictureInPictureMode && !isLoadingStream,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -1246,7 +1409,7 @@ fun PlayerScreen(
 
         // 4. Panel Rekomendasi Video Ringkas di Sisi Bawah (D-Pad Down / Swipe)
         AnimatedVisibility(
-            visible = showRecommendations && recommendations.isNotEmpty(),
+            visible = showRecommendations && recommendations.isNotEmpty() && !isInPictureInPictureMode && !isLoadingStream,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -1422,7 +1585,7 @@ fun PlayerScreen(
 
         // 5. Menu Atas Pemutar Video (D-Pad UP): Ke Channel Utama & Ganti Resolusi (khusus stream online)
         AnimatedVisibility(
-            visible = showTopMenu,
+            visible = showTopMenu && !isInPictureInPictureMode && !isLoadingStream,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
@@ -1500,7 +1663,7 @@ fun PlayerScreen(
                             Surface(
                                 onClick = {
                                     showTopMenu = false
-                                    exoPlayer.stop()
+                                    MediaPlaybackManager.stopAndClear(context)
                                     onOpenChannel?.invoke(activeChannelId, currentVideo.author, currentVideo.videoId)
                                 },
                                 shape = RoundedCornerShape(10.dp),
@@ -1514,7 +1677,7 @@ fun PlayerScreen(
                                         style = FocusStyle.PILL,
                                         onClick = {
                                             showTopMenu = false
-                                            exoPlayer.stop()
+                                            MediaPlaybackManager.stopAndClear(context)
                                             onOpenChannel?.invoke(activeChannelId, currentVideo.author, currentVideo.videoId)
                                         }
                                     )
@@ -1596,7 +1759,6 @@ fun PlayerScreen(
                                     Surface(
                                         onClick = {
                                             if (!isCurrentRes) {
-                                                pendingSeekAfterQualitySwitchMs = exoPlayer.currentPosition.coerceAtLeast(0L)
                                                 onSelectStreamQuality?.invoke(option)
                                             }
                                             showTopMenu = false
@@ -1624,7 +1786,6 @@ fun PlayerScreen(
                                                 style = FocusStyle.PILL,
                                                 onClick = {
                                                     if (!isCurrentRes) {
-                                                        pendingSeekAfterQualitySwitchMs = exoPlayer.currentPosition.coerceAtLeast(0L)
                                                         onSelectStreamQuality?.invoke(option)
                                                     }
                                                     showTopMenu = false
@@ -1659,22 +1820,6 @@ fun PlayerScreen(
                 }
             }
         }
-
-        // Banner Download non-blocking di sisi bawah saat memutar stream YouTube (hilang otomatis 5 detik)
-        DownloadPromptBanner(
-            visible = showDownloadBanner,
-            videoTitle = currentVideo.title,
-            resolutionLabel = downloadResolutionLabel,
-            requestFocusOnShow = isTv,
-            onDownload = {
-                onTriggerDownload?.invoke()
-                showDownloadBanner = false
-            },
-            onDismiss = {
-                showDownloadBanner = false
-            },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
     }
 }
 
@@ -1683,36 +1828,42 @@ private fun PlayerTopActionPill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     containerColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isActive: Boolean = false,
+    activeColor: Color = Color(0xFFE50914)
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(10.dp),
         color = containerColor,
+        border = BorderStroke(
+            1.dp,
+            if (isActive) activeColor.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.12f)
+        ),
         modifier = Modifier
             .heightIn(min = 36.dp)
             .dpadFocusable(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(10.dp),
                 style = FocusStyle.PILL,
                 onClick = onClick
             )
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = Color.White,
-                modifier = Modifier.size(16.dp)
+                tint = if (isActive) activeColor else Color.White,
+                modifier = Modifier.size(15.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
                 text = label,
                 color = Color.White,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 softWrap = false
             )

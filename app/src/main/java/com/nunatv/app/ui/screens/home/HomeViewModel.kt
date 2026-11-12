@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.nunatv.app.data.local.DownloadedVideoEntity
 import com.nunatv.app.data.preferences.AppPreferences
 import com.nunatv.app.data.repository.VideoRepository
+import com.nunatv.app.util.CategoryDetector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -64,6 +66,27 @@ class HomeViewModel(
         viewModelScope.launch {
             repository.updateCategory(video.id, newCategory)
         }
+    }
+
+    suspend fun autoCategorizeUmumVideos(): Int {
+        val currentVideos = videos.value
+        val existingCategories = appPreferences.customCategories.first()
+        var updatedCount = 0
+
+        for (video in currentVideos) {
+            if (!video.category.equals("Umum", ignoreCase = true)) continue
+            val detected = CategoryDetector.detectCategory(
+                title = video.title,
+                uploader = video.author,
+                existingCategories = existingCategories
+            )
+            if (!detected.equals("Umum", ignoreCase = true)) {
+                appPreferences.addCategory(detected)
+                repository.updateCategory(video.id, detected)
+                updatedCount++
+            }
+        }
+        return updatedCount
     }
 
     fun recordPlay(video: DownloadedVideoEntity) {

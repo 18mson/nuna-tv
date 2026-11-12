@@ -19,17 +19,17 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,6 +53,7 @@ fun AdaptiveScaffold(
     isTv: Boolean,
     currentRoute: String?,
     onNavigate: (Screen) -> Unit,
+    miniPlayerContent: @Composable () -> Unit = {},
     content: @Composable () -> Unit
 ) {
     val navItems = listOf(Screen.Home, Screen.YoutubeTv, Screen.Settings)
@@ -160,33 +161,73 @@ fun AdaptiveScaffold(
                     .background(Color(0xFF242424))
             )
 
-            Box(modifier = Modifier.weight(1f)) {
-                content()
+            Column(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    content()
+                }
+                miniPlayerContent()
             }
         }
     } else {
-        // UI Layout HP / Touchscreen: Bottom Navigation Bar
+        // UI Layout HP / Touchscreen: Mini Player + Bottom Navigation Bar Ramping
         Scaffold(
+            containerColor = Color(0xFF0F0F0F),
             bottomBar = {
-                NavigationBar(
-                    containerColor = Color(0xFF161616),
-                    contentColor = Color.White
-                ) {
-                    navItems.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { onNavigate(screen) },
-                            icon = { Icon(screen.icon, contentDescription = screen.title) },
-                            label = { Text(screen.title) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color.White,
-                                selectedTextColor = Color.White,
-                                indicatorColor = Color(0xFFE50914),
-                                unselectedIconColor = Color.Gray,
-                                unselectedTextColor = Color.Gray
-                            )
-                        )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    miniPlayerContent()
+                    Surface(
+                        color = Color(0xFF141414),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                        ) {
+                            HorizontalDivider(color = Color(0xFF242424), thickness = 1.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                navItems.forEach { screen ->
+                                    val selected = currentRoute == screen.route
+                                    val itemColor = if (selected) Color.White else Color(0xFF8C8C8C)
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clickable { onNavigate(screen) }
+                                            .padding(bottom = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(28.dp)
+                                                .height(2.5.dp)
+                                                .clip(RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp))
+                                                .background(if (selected) Color(0xFFE50914) else Color.Transparent)
+                                        )
+                                        Icon(
+                                            imageVector = screen.icon,
+                                            contentDescription = screen.title,
+                                            tint = itemColor,
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                        Text(
+                                            text = screen.title,
+                                            color = itemColor,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

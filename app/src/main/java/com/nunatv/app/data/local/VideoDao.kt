@@ -32,6 +32,18 @@ interface VideoDao {
     @Query("UPDATE downloaded_videos SET progress = :progress, status = :status WHERE id = :id")
     suspend fun updateProgress(id: Long, progress: Int, status: DownloadStatus)
 
+    @Query("UPDATE downloaded_videos SET videoId = :videoId, title = :title, author = :author, thumbnailUrl = :thumbnailUrl, durationSeconds = :durationSeconds, category = :category, status = :status WHERE id = :id")
+    suspend fun updateMetadata(
+        id: Long,
+        videoId: String,
+        title: String,
+        author: String,
+        thumbnailUrl: String,
+        durationSeconds: Long,
+        category: String,
+        status: DownloadStatus
+    )
+
     @Query("UPDATE downloaded_videos SET localFilePath = :filePath, fileSize = :fileSize, status = 'COMPLETED', progress = 100 WHERE id = :id")
     suspend fun markCompleted(id: Long, filePath: String, fileSize: Long)
 

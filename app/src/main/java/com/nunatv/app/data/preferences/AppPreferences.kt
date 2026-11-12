@@ -3,6 +3,7 @@ package com.nunatv.app.data.preferences
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -98,6 +99,18 @@ class AppPreferences(private val context: Context) {
     val watchHistory: Flow<List<YoutubeSearchItem>> = context.dataStore.data.map { prefs ->
         val raw = prefs[KEY_WATCH_HISTORY] ?: return@map emptyList()
         parseWatchHistoryJson(raw)
+    }
+
+    val backgroundPlaybackEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_BACKGROUND_PLAYBACK] ?: false
+    }
+
+    val pipEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_PIP_ENABLED] ?: false
+    }
+
+    val hasSeenOnboarding: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_HAS_SEEN_ONBOARDING] ?: false
     }
 
     private fun parseWatchHistoryJson(raw: String): MutableList<YoutubeSearchItem> {
@@ -204,6 +217,24 @@ class AppPreferences(private val context: Context) {
         }
     }
 
+    suspend fun setBackgroundPlaybackEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BACKGROUND_PLAYBACK] = enabled
+        }
+    }
+
+    suspend fun setPipEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PIP_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setHasSeenOnboarding(seen: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_HAS_SEEN_ONBOARDING] = seen
+        }
+    }
+
     suspend fun setDownloadLocation(path: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_DOWNLOAD_LOCATION] = path
@@ -235,5 +266,8 @@ class AppPreferences(private val context: Context) {
         val KEY_WATCH_HISTORY = stringPreferencesKey("pref_watch_history")
         val KEY_LAST_WATCHED_ID = stringPreferencesKey("pref_last_watched_id")
         val KEY_LAST_WATCHED_TITLE = stringPreferencesKey("pref_last_watched_title")
+        val KEY_BACKGROUND_PLAYBACK = booleanPreferencesKey("pref_background_playback_enabled")
+        val KEY_PIP_ENABLED = booleanPreferencesKey("pref_pip_enabled")
+        val KEY_HAS_SEEN_ONBOARDING = booleanPreferencesKey("pref_has_seen_onboarding")
     }
 }

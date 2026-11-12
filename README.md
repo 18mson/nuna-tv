@@ -67,11 +67,18 @@ Catatan build: APK pada rilis ini ditandatangani dengan `signingConfigs.getByNam
 
 Hasil build akan dibuat terpisah di `app/build/outputs/apk/release/` untuk `arm64-v8a` dan `armeabi-v7a`.
 
-## Aturan Versioning
+## Kredit
 
-Proyek ini mengikuti skema Semantic Versioning (`vMAJOR.MINOR.PATCH`) yang diselaraskan di empat tempat setiap kali merilis versi baru:
+Nuna TV berjalan dengan dukungan berbagai proyek sumber terbuka berikut:
 
-1. Naikkan `versionCode` (+1 bilangan bulat) dan perbarui `versionName` (`"MAJOR.MINOR.PATCH"`) di [`app/build.gradle.kts`](app/build.gradle.kts).
-2. Catat ringkasan perubahan di [`CHANGELOG.md`](CHANGELOG.md).
-3. Simpan APK hasil build ke direktori `releases/v<versi>/` beserta berkas `SHA256SUMS.txt` yang sesuai.
-4. Buat Git tag beranotasi `git tag -a v<versi> -m "Release v<versi>"` lalu push commit dan tag ke repositori (`git push origin main --follow-tags`).
+- [youtubedl-android](https://github.com/junkfood02/youtubedl-android) (`io.github.junkfood02.youtubedl-android` oleh JunkFood02 serta basis awal dari `yausername`) yang menyediakan integrasi Python dan runtime ekstraksi di Android.
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) untuk mengambil metadata video, daftar resolusi stream, dan pengunduhan media.
+- [FFmpeg](https://ffmpeg.org/) untuk menggabungkan stream video dan audio serta memproses berkas media hasil unduhan.
+- AndroidX Media3 (ExoPlayer), Jetpack Compose, Compose for TV, Room, WorkManager, dan DataStore dari tim Android Open Source Project (Google) untuk pemutar media, antarmuka, penyimpanan lokal, dan tugas latar belakang.
+- [Coil](https://github.com/coil-kt/coil) untuk pemuatan gambar thumbnail di Jetpack Compose.
+- Kotlin dan Kotlinx Coroutines dari JetBrains.
+
+## Lisensi
+
+Proyek ini dirilis di bawah lisensi MIT. Lihat berkas [`LICENSE`](LICENSE) untuk ketentuan lengkap.
+

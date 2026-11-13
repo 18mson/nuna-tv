@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -175,6 +174,7 @@ fun AdaptiveScaffold(
         }
     } else {
         // UI Layout HP / Touchscreen: Mini Player + M3 Expressive Floating Capsule Toolbar
+        // Pill navbar melayang di atas konten tanpa background (transparan)
         val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
         val pillContainerColor = if (isDark) {
             MaterialTheme.colorScheme.surfaceContainerHigh
@@ -187,88 +187,88 @@ fun AdaptiveScaffold(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         }
 
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+        // Tinggi pill navbar: 48dp item + 12dp padding atas-bawah + 8dp gap atas
+        val pillNavHeightDp = 80.dp
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Konten utama mengambil seluruh layar, diberi padding bawah agar tidak tertutup navbar
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.weight(1f)) {
+                    content()
+                }
+                // Mini player (di atas navbar)
+                miniPlayerContent()
+                // Spacer sebesar tinggi pill agar konten tidak tersembunyi di bawah navbar
+                Spacer(modifier = Modifier.navigationBarsPadding())
+                Spacer(modifier = Modifier.height(pillNavHeightDp))
+            }
+
+            // Pill navbar floating overlay — transparan di sekitarnya
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(top = 8.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(percent = 50),
+                    color = pillContainerColor,
+                    shadowElevation = 8.dp,
+                    tonalElevation = 4.dp,
+                    border = BorderStroke(1.dp, pillBorderColor)
                 ) {
-                    miniPlayerContent()
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(top = 8.dp, bottom = 12.dp),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = pillContainerColor,
-                            shadowElevation = 8.dp,
-                            tonalElevation = 4.dp,
-                            border = BorderStroke(1.dp, pillBorderColor)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        navItems.forEach { screen ->
+                            val selected = currentRoute == screen.route
+                            val targetBgColor = if (selected) {
+                                if (isDark) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceContainerLowest
+                            } else {
+                                Color.Transparent
+                            }
+                            val targetIconColor = if (selected) {
+                                if (isDark) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.primary
+                            } else {
+                                if (isDark) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onPrimaryContainer
+                            }
+
+                            val animBgColor by animateColorAsState(
+                                targetValue = targetBgColor,
+                                animationSpec = tween(durationMillis = 200),
+                                label = "tab_bg_${screen.route}"
+                            )
+                            val animIconColor by animateColorAsState(
+                                targetValue = targetIconColor,
+                                animationSpec = tween(durationMillis = 200),
+                                label = "tab_icon_${screen.route}"
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(animBgColor)
+                                    .clickable { onNavigate(screen) },
+                                contentAlignment = Alignment.Center
                             ) {
-                                navItems.forEach { screen ->
-                                    val selected = currentRoute == screen.route
-                                    val targetBgColor = if (selected) {
-                                        if (isDark) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.surfaceContainerLowest
-                                    } else {
-                                        Color.Transparent
-                                    }
-                                    val targetIconColor = if (selected) {
-                                        if (isDark) MaterialTheme.colorScheme.onPrimary
-                                        else MaterialTheme.colorScheme.primary
-                                    } else {
-                                        if (isDark) MaterialTheme.colorScheme.onSurfaceVariant
-                                        else MaterialTheme.colorScheme.onPrimaryContainer
-                                    }
-
-                                    val animBgColor by animateColorAsState(
-                                        targetValue = targetBgColor,
-                                        animationSpec = tween(durationMillis = 200),
-                                        label = "tab_bg_${screen.route}"
-                                    )
-                                    val animIconColor by animateColorAsState(
-                                        targetValue = targetIconColor,
-                                        animationSpec = tween(durationMillis = 200),
-                                        label = "tab_icon_${screen.route}"
-                                    )
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(CircleShape)
-                                            .background(animBgColor)
-                                            .clickable { onNavigate(screen) },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = screen.icon,
-                                            contentDescription = screen.title,
-                                            tint = animIconColor,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
+                                Icon(
+                                    imageVector = screen.icon,
+                                    contentDescription = screen.title,
+                                    tint = animIconColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
                             }
                         }
                     }
                 }
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                content()
             }
         }
     }

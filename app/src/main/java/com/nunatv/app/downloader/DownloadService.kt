@@ -20,6 +20,7 @@ import com.nunatv.app.util.CategoryDetector
 import com.nunatv.app.util.StorageUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
@@ -30,6 +31,10 @@ class DownloadService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var notificationManager: NotificationManager
+    // Job coroutine aktif per download — agar bisa dibatalkan via ACTION_CANCEL
+    private var activeDownloadJob: Job? = null
+    private var activeRecordId: Long = -1L
+    private var activeVideoId: String = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -37,6 +42,14 @@ class DownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+
+        // Handle cancel request
+        if (action == ACTION_CANCEL) {
+            handleCancel()
+            return START_NOT_STICKY
+        }
+
         val videoUrl = intent?.getStringExtra(EXTRA_URL)
         val resolutionName = intent?.getStringExtra(EXTRA_RESOLUTION) ?: VideoResolution.HIGH.name
         val destDirPath = intent?.getStringExtra(EXTRA_DEST_DIR)
@@ -52,12 +65,33 @@ class DownloadService : Service() {
         // Mulai Foreground Service dengan initial notification
         startForegroundWithNotification("Menyiapkan unduhan...", 0)
 
-        // Jalankan proses download
-        serviceScope.launch {
+        // Jalankan proses download — simpan job agar bisa dicancel
+        activeDownloadJob = serviceScope.launch {
             processDownload(videoUrl, resolution, destDir)
         }
 
         return START_NOT_STICKY
+    }
+
+    private fun handleCancel() {
+        activeDownloadJob?.cancel()
+        activeDownloadJob = null
+        // Hapus record dari DB dan bersihkan file parsial
+        if (activeRecordId >= 0L) {
+            serviceScope.launch {
+                try {
+                    val database = NunaDatabase.getInstance(applicationContext)
+                    database.videoDao().deleteVideoById(activeRecordId)
+                    if (activeVideoId.isNotBlank()) {
+                        val destDir = StorageUtils.getDefaultDownloadDir(applicationContext)
+                        cleanupPartialFiles(destDir, activeVideoId)
+                    }
+                } catch (_: Throwable) {}
+            }
+        }
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        notificationManager.cancel(NOTIFICATION_ID)
+        stopSelf()
     }
 
     private suspend fun processDownload(
@@ -123,11 +157,14 @@ class DownloadService : Service() {
             progress = 0
         )
         val recordId = dao.insertVideo(initialEntity)
+        activeRecordId = recordId
+        activeVideoId = initialVideoId // akan diperbarui setelah info diambil
 
         // 2. Ekstrak Video Info & Deteksi Kategori Otomatis lalu perbarui metadata kartu
         updateNotification("Mengambil info video...", 0, indeterminate = true)
         val info = YoutubeDlManager.getVideoInfo(applicationContext, targetUrl)
         val videoId = info?.id ?: initialVideoId
+        activeVideoId = videoId // perbarui dengan id final
         val title = info?.title ?: "YouTube Video ($videoId)"
         val uploader = info?.uploader ?: ""
         val thumbnailUrl = info?.thumbnail ?: "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
@@ -310,6 +347,7 @@ class DownloadService : Service() {
         const val EXTRA_URL = "extra_video_url"
         const val EXTRA_RESOLUTION = "extra_resolution"
         const val EXTRA_DEST_DIR = "extra_dest_dir"
+        const val ACTION_CANCEL = "com.nunatv.app.action.CANCEL_DOWNLOAD"
 
         fun start(context: Context, videoUrl: String, resolutionName: String, destDir: String? = null) {
             val intent = Intent(context, DownloadService::class.java).apply {
@@ -322,6 +360,13 @@ class DownloadService : Service() {
             } else {
                 context.startService(intent)
             }
+        }
+
+        fun cancel(context: Context) {
+            val intent = Intent(context, DownloadService::class.java).apply {
+                action = ACTION_CANCEL
+            }
+            context.startService(intent)
         }
     }
 }

@@ -34,11 +34,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
@@ -538,7 +540,10 @@ fun HomeScreen(
                                             },
                                             onOpenOptions = { videoForOptions = video },
                                             onEditCategory = { videoToEditCategory = video },
-                                            onDelete = { videoToDelete = video }
+                                            onDelete = { videoToDelete = video },
+                                            onCancelDownload = {
+                                                com.nunatv.app.downloader.DownloadService.cancel(context)
+                                            }
                                         )
                                     }
                                 }
@@ -1088,9 +1093,11 @@ fun HomeSectionRow(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     onPlayAll: (() -> Unit)? = null,
-    onPlayRandom: (() -> Unit)? = null
+    onPlayRandom: (() -> Unit)? = null,
+    onCancelDownload: () -> Unit = {}
 ) {
     val horizontalPad = if (compact) 12.dp else 16.dp
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -1182,7 +1189,10 @@ fun HomeSectionRow(
                         },
                         onOpenOptions = { onOpenOptions(video) },
                         onEditCategory = { onEditCategory(video) },
-                        onDelete = { onDelete(video) }
+                        onDelete = { onDelete(video) },
+                        onCancelDownload = {
+                            com.nunatv.app.downloader.DownloadService.cancel(context)
+                        }
                     )
                 }
             }
@@ -1199,6 +1209,7 @@ fun HomeVideoCard(
     onOpenOptions: () -> Unit = {},
     onEditCategory: () -> Unit,
     onDelete: () -> Unit,
+    onCancelDownload: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -1399,6 +1410,27 @@ fun HomeVideoCard(
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Tombol ✕ Cancel Download (kanan atas, hanya saat sedang mengunduh)
+                if (video.status == DownloadStatus.DOWNLOADING || video.status == DownloadStatus.QUEUED) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.72f))
+                            .clickable(onClick = onCancelDownload),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Batalkan Unduhan",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }

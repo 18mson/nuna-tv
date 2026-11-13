@@ -2,17 +2,24 @@
 
 Semua perubahan penting pada proyek Nuna TV dicatat di dokumen ini mengikuti format Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
+## [1.2.0] - 2026-11-13
+
+Pembaruan besar untuk Material 3 Expressive, tema warna dinamis, multi-kategori dan pemutaran instan per kategori, resolusi unduhan bertingkat dengan hidden setting, serta tampilan halaman channel YouTube lengkap (`versionCode = 3`).
+
+### Ditambahkan
+- **Multi-Kategori per Video**: Mendukung penempatan satu video ke dalam beberapa kategori sekaligus dengan dialog pilihan checklist multi-select.
+- **Tombol Play & Random per Kategori**: Memutar seluruh video dalam suatu kategori secara berurutan sesuai abjad (A-Z) atau acak (shuffle) langsung dari baris Beranda atau header kategori.
+- **Pilihan Resolusi Unduhan Bertingkat & Hidden Setting (Easter Egg)**: Opsi unduhan dikelompokkan menjadi tingkatan adaptif (Tinggi, Sedang, Rendah, Audio) dengan fitur tersembunyi (ketuk 5x pada opsi resolusi) untuk membuka rincian angka resolusi manual (1080p, 720p, 480p, 360p, 240p, Audio).
+- **Halaman Profil Channel YouTube Lengkap**: Banner channel, foto profil avatar, handle channel (`@...`), tab filter ("Semua", "Populer"), dan kolom pencarian in-channel (*"Cari di channel ini..."*).
+- **Material 3 Expressive & Personalisasi Tema**: Pilihan tema warna dinamis (Ungu, Merah, Biru, Coklat), mode Gelap/Terang, floating pill bottom navigation bar, konsistensi sudut lengkung input/keyboard, dan menu atas player yang lebih bersih (auto-close on tap outside).
+- **Penyimpanan Posisi Tonton Terakhir (`PlaybackPositionStore`)**: Melanjutkan pemutaran video secara otomatis dari posisi terakhir.
+- **Stabilitas Jaringan**: Konfigurasi `java.net.preferIPv4Stack = true` untuk mencegah timeout IPv6 pada jaringan seluler dan emulator.
+
 ## [1.1.0] - 2026-11-12
 
 Pembaruan besar untuk pengalaman ponsel, pemutaran latar belakang, jendela popup (PiP), YouTube Shorts, siaran Live, optimasi kecepatan stream, dan deteksi kategori otomatis (`versionCode = 2`).
 
 ### Ditambahkan
-- **Multi-Kategori per Video**: Mendukung penempatan satu video ke dalam beberapa kategori sekaligus dengan dialog pilihan checklist multi-select.
-- **Tombol Play & Random per Kategori**: Memutar seluruh video dalam suatu kategori secara berurutan sesuai abjad (A-Z) atau acak (shuffle) langsung dari judul baris Beranda atau header kategori.
-- **Pilihan Resolusi Unduhan Adaptif & Hidden Setting**: Opsi unduhan dikelompokkan menjadi tingkatan adaptif (Tinggi, Sedang, Rendah, Audio) dengan fitur tersembunyi (ketuk 5x pada opsi resolusi) untuk membuka angka resolusi detail.
-- **Halaman Profil Channel YouTube Lengkap**: Menampilkan banner channel, foto profil avatar, handle channel, tab filter ("Semua", "Populer"), dan kolom pencarian video in-channel.
-- **Material 3 Expressive & Personalisasi Tema**: Pilihan tema warna dinamis (Ungu, Merah, Biru, Coklat), mode Gelap/Terang, floating pill bottom navigation bar, border radius input yang seragam, dan menu atas player yang lebih bersih dan responsive (auto-close on tap outside).
-- **Penyimpanan Posisi Tonton Terakhir (`PlaybackPositionStore`)**: Melanjutkan pemutaran video secara otomatis dari posisi terakhir.
 - **Pemutaran Latar Belakang (Background Audio)** melalui `MediaPlaybackService` (`MediaSessionCompat` + `NotificationCompat.MediaStyle`) dengan kontrol Sebelumnya, Putar/Jeda, Berikutnya, dan Tutup di panel notifikasi maupun layar kunci (bawaan OFF, diaktifkan dari Settings).
 - **Jendela Popup / Picture-in-Picture (PiP)** khusus perangkat non-TV dengan `RemoteAction` kontrol pemutaran, tombol PiP di player, serta aturan penutupan jendela PiP (berhenti total bila pemutaran latar belakang mati, atau lanjut memutar audio di notifikasi bila pemutaran latar belakang aktif).
 - **Mini Player Dalam Aplikasi (`MiniPlayerBar`)** di atas bilah navigasi bawah saat player diperkecil agar pengguna dapat tetap menjelajahi tab lain sambil menonton atau mendengarkan.

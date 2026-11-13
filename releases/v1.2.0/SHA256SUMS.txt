@@ -1,0 +1,2 @@
+bcaea950b48660f24f4a0ccd34aa5765884dd157c22482f9c4010df0e7d3ddce  nuna-tv-v1.2.0-arm64-v8a.apk
+7d7a5bb33c65a48422dc6631adc308923696f1fb524c83dbe2dc558a100370fa  nuna-tv-v1.2.0-armeabi-v7a.apk

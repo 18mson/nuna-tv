@@ -2,23 +2,23 @@
 
 Nuna TV adalah aplikasi pemutar YouTube dan pengelola video offline untuk Android TV maupun ponsel Android dalam satu basis kode Kotlin dan Jetpack Compose. Tampilan dan navigasi menyesuaikan perangkat secara otomatis, mendukung remote D-Pad di TV serta layar sentuh di ponsel tanpa login akun Google.
 
-## Unduh APK (v1.1.0)
+## Unduh APK (v1.2.0)
 
-APK release terbaru (`v1.1.0`, `versionCode = 2`) tersimpan di direktori [`releases/v1.1.0/`](releases/v1.1.0) beserta berkas checksum [`SHA256SUMS.txt`](releases/v1.1.0/SHA256SUMS.txt). Riwayat perubahan lengkap tersedia di [`CHANGELOG.md`](CHANGELOG.md).
+APK release terbaru (`v1.2.0`, `versionCode = 3`) tersimpan di direktori [`releases/v1.2.0/`](releases/v1.2.0) beserta berkas checksum [`SHA256SUMS.txt`](releases/v1.2.0/SHA256SUMS.txt). Riwayat perubahan lengkap tersedia di [`CHANGELOG.md`](CHANGELOG.md).
 
 | Target Perangkat | Arsitektur ABI | Ukuran | Berkas APK |
 | :--- | :--- | :--- | :--- |
-| Ponsel Android 64-bit dan emulator ARM64 | `arm64-v8a` | 35 MB | [nuna-tv-v1.1.0-arm64-v8a.apk](releases/v1.1.0/nuna-tv-v1.1.0-arm64-v8a.apk) |
-| Android TV dan proyektor 32-bit | `armeabi-v7a` | 33 MB | [nuna-tv-v1.1.0-armeabi-v7a.apk](releases/v1.1.0/nuna-tv-v1.1.0-armeabi-v7a.apk) |
+| Ponsel Android 64-bit dan emulator ARM64 | `arm64-v8a` | 35 MB | [nuna-tv-v1.2.0-arm64-v8a.apk](releases/v1.2.0/nuna-tv-v1.2.0-arm64-v8a.apk) |
+| Android TV dan proyektor 32-bit | `armeabi-v7a` | 33 MB | [nuna-tv-v1.2.0-armeabi-v7a.apk](releases/v1.2.0/nuna-tv-v1.2.0-armeabi-v7a.apk) |
 
 Contoh pemasangan melalui ADB:
 
 ```bash
 # Untuk ponsel Android (arm64-v8a)
-adb install -r releases/v1.1.0/nuna-tv-v1.1.0-arm64-v8a.apk
+adb install -r releases/v1.2.0/nuna-tv-v1.2.0-arm64-v8a.apk
 
 # Untuk Android TV / proyektor (armeabi-v7a)
-adb -s <IP_TV>:5555 install -r releases/v1.1.0/nuna-tv-v1.1.0-armeabi-v7a.apk
+adb -s <IP_TV>:5555 install -r releases/v1.2.0/nuna-tv-v1.2.0-armeabi-v7a.apk
 ```
 
 Catatan build: APK pada rilis ini ditandatangani dengan `signingConfigs.getByName("debug")` sesuai konfigurasi di [`app/build.gradle.kts`](app/build.gradle.kts).

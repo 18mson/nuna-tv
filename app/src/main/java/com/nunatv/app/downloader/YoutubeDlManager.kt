@@ -52,11 +52,16 @@ object YoutubeDlManager {
 
     private const val TAG = "YoutubeDlManager"
 
-    // Gunakan player client android lebih dulu agar lebih cepat, lalu fallback web bila perlu
+    // Gunakan player client android lebih dulu agar lebih cepat, lalu fallback ios/web bila perlu.
+    // android & ios tidak butuh JS runtime → aman untuk environment Android di device.
+    // visionos (default yt-dlp tanpa JS) tidak bisa akses video "Made for Kids".
     private const val YOUTUBE_FAST_STREAM_ARGS =
-        "youtube:player_client=android"
+        "youtube:player_client=android,ios"
     private const val YOUTUBE_EXTRACTOR_ARGS =
-        "youtube:player_client=android,web"
+        "youtube:player_client=android,ios,web"
+    // Args khusus untuk download (tanpa 'web' supaya tidak butuh JS runtime sama sekali)
+    private const val YOUTUBE_DOWNLOAD_ARGS =
+        "youtube:player_client=android,ios"
     private const val STREAM_CACHE_TTL_MS = 10 * 60 * 1000L
 
     private val streamCache = ConcurrentHashMap<String, Pair<Long, ResolvedYoutubeVideo>>()
@@ -693,6 +698,11 @@ object YoutubeDlManager {
             }
 
             return@withContext try {
+                // Coba android+ios dulu (tidak butuh JS runtime, bisa akses video "Made for Kids")
+                fetch(YOUTUBE_DOWNLOAD_ARGS)
+            } catch (_: Throwable) {
+                null
+            } ?: try {
                 fetch(YOUTUBE_EXTRACTOR_ARGS)
             } catch (_: Throwable) {
                 null
@@ -722,6 +732,11 @@ object YoutubeDlManager {
                 return YoutubeDL.getInstance().getInfo(request)
             }
             return@withContext try {
+                // Coba android+ios dulu (tidak butuh JS runtime, bisa akses video "Made for Kids")
+                fetch(YOUTUBE_DOWNLOAD_ARGS)
+            } catch (_: Throwable) {
+                null
+            } ?: try {
                 fetch(YOUTUBE_EXTRACTOR_ARGS)
             } catch (_: Throwable) {
                 null
@@ -759,6 +774,9 @@ object YoutubeDlManager {
                 addOption("--no-playlist")
                 addOption("--no-mtime")
                 addOption("--no-check-certificates")
+                // Paksa client android+ios agar tidak bergantung JS runtime.
+                // Client default visionos (tanpa JS) gagal untuk video "Made for Kids" seperti BabyBus.
+                addOption("--extractor-args", YOUTUBE_DOWNLOAD_ARGS)
                 val cookiesFile = getCookiesFile(context)
                 if (cookiesFile != null && cookiesFile.exists() && cookiesFile.length() > 0) {
                     addOption("--cookies", cookiesFile.absolutePath)

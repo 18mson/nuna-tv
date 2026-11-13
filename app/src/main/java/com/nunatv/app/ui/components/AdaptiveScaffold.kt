@@ -2,10 +2,12 @@ package com.nunatv.app.ui.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,11 +25,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,14 +89,14 @@ fun AdaptiveScaffold(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0F0F0F))
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Sidebar TV Adaptif: Membesar saat difokuskan remote, mengecil saat masuk ke konten menu
             Column(
                 modifier = Modifier
                     .width(sidebarWidth)
                     .fillMaxHeight()
-                    .background(Color(0xFF141414))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .onFocusChanged { focusState ->
                         isSidebarFocused = focusState.hasFocus
                     }
@@ -109,14 +114,14 @@ fun AdaptiveScaffold(
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFE50914)),
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Nuna TV",
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -128,7 +133,7 @@ fun AdaptiveScaffold(
                     ) {
                         Text(
                             text = "NUNA TV",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 15.sp,
                             letterSpacing = 1.sp,
@@ -158,7 +163,7 @@ fun AdaptiveScaffold(
                 modifier = Modifier
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(Color(0xFF242424))
+                    .background(MaterialTheme.colorScheme.outlineVariant)
             )
 
             Column(modifier = Modifier.weight(1f)) {
@@ -169,60 +174,86 @@ fun AdaptiveScaffold(
             }
         }
     } else {
-        // UI Layout HP / Touchscreen: Mini Player + Bottom Navigation Bar Ramping
+        // UI Layout HP / Touchscreen: Mini Player + M3 Expressive Floating Capsule Toolbar
+        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        val pillContainerColor = if (isDark) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.primaryContainer
+        }
+        val pillBorderColor = if (isDark) {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        }
+
         Scaffold(
-            containerColor = Color(0xFF0F0F0F),
+            containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     miniPlayerContent()
-                    Surface(
-                        color = Color(0xFF141414),
-                        modifier = Modifier.fillMaxWidth()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(top = 8.dp, bottom = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .navigationBarsPadding()
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = pillContainerColor,
+                            shadowElevation = 8.dp,
+                            tonalElevation = 4.dp,
+                            border = BorderStroke(1.dp, pillBorderColor)
                         ) {
-                            HorizontalDivider(color = Color(0xFF242424), thickness = 1.dp)
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 navItems.forEach { screen ->
                                     val selected = currentRoute == screen.route
-                                    val itemColor = if (selected) Color.White else Color(0xFF8C8C8C)
-                                    Column(
+                                    val targetBgColor = if (selected) {
+                                        if (isDark) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.surfaceContainerLowest
+                                    } else {
+                                        Color.Transparent
+                                    }
+                                    val targetIconColor = if (selected) {
+                                        if (isDark) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.primary
+                                    } else {
+                                        if (isDark) MaterialTheme.colorScheme.onSurfaceVariant
+                                        else MaterialTheme.colorScheme.onPrimaryContainer
+                                    }
+
+                                    val animBgColor by animateColorAsState(
+                                        targetValue = targetBgColor,
+                                        animationSpec = tween(durationMillis = 200),
+                                        label = "tab_bg_${screen.route}"
+                                    )
+                                    val animIconColor by animateColorAsState(
+                                        targetValue = targetIconColor,
+                                        animationSpec = tween(durationMillis = 200),
+                                        label = "tab_icon_${screen.route}"
+                                    )
+
+                                    Box(
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .clickable { onNavigate(screen) }
-                                            .padding(bottom = 4.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(animBgColor)
+                                            .clickable { onNavigate(screen) },
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(28.dp)
-                                                .height(2.5.dp)
-                                                .clip(RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp))
-                                                .background(if (selected) Color(0xFFE50914) else Color.Transparent)
-                                        )
                                         Icon(
                                             imageVector = screen.icon,
                                             contentDescription = screen.title,
-                                            tint = itemColor,
-                                            modifier = Modifier.size(21.dp)
-                                        )
-                                        Text(
-                                            text = screen.title,
-                                            color = itemColor,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            tint = animIconColor,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                 }
@@ -251,17 +282,18 @@ private fun SidebarNavItem(
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(50)
 
     val containerColor = when {
-        isFocused -> Color.White.copy(alpha = 0.16f)
-        selected -> Color.White.copy(alpha = 0.08f)
+        selected -> MaterialTheme.colorScheme.primaryContainer
+        isFocused -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         else -> Color.Transparent
     }
 
     val contentColor = when {
-        isFocused || selected -> Color.White
-        else -> Color(0xFF9E9E9E)
+        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+        isFocused -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Row(
@@ -272,7 +304,7 @@ private fun SidebarNavItem(
             .background(containerColor, shape)
             .then(
                 if (isFocused) {
-                    Modifier.border(1.5.dp, Color.White.copy(alpha = 0.85f), shape)
+                    Modifier.border(1.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f), shape)
                 } else {
                     Modifier
                 }
@@ -282,13 +314,12 @@ private fun SidebarNavItem(
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Penanda status aktif (garis aksen merah di tepi kiri) terpisah dari pointer fokus putih
         Box(
             modifier = Modifier
                 .width(3.dp)
                 .height(20.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(if (selected) Color(0xFFE50914) else Color.Transparent)
+                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
         )
 
         Spacer(modifier = Modifier.width(10.dp))

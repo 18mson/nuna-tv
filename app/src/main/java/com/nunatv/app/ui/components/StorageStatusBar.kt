@@ -38,7 +38,7 @@ fun StorageStatusCard(
     modifier: Modifier = Modifier
 ) {
     val statusColor = when {
-        storageInfo.availableBytes < StorageUtils.LOW_STORAGE_THRESHOLD_BYTES -> Color(0xFFE50914)
+        storageInfo.availableBytes < StorageUtils.LOW_STORAGE_THRESHOLD_BYTES -> MaterialTheme.colorScheme.error
         storageInfo.availableBytes < 800L * 1024L * 1024L -> Color(0xFFFFB300)
         else -> Color(0xFF4CAF50)
     }
@@ -134,53 +134,61 @@ fun StorageStatusCard(
 @Composable
 fun CompactStorageBar(
     storageInfo: StorageInfo,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compactHeader: Boolean = false
 ) {
     val statusColor = when {
-        storageInfo.availableBytes < StorageUtils.LOW_STORAGE_THRESHOLD_BYTES -> Color(0xFFE50914)
+        storageInfo.availableBytes < StorageUtils.LOW_STORAGE_THRESHOLD_BYTES -> MaterialTheme.colorScheme.error
         storageInfo.availableBytes < 800L * 1024L * 1024L -> Color(0xFFFFB300)
         else -> Color(0xFF4CAF50)
     }
 
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFF1A1A1A),
-        border = BorderStroke(1.dp, if (storageInfo.isLowStorage) statusColor else Color(0xFF2D2D2D)),
+        shape = if (compactHeader) RoundedCornerShape(50) else RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(
+            1.dp,
+            if (storageInfo.isLowStorage) statusColor else MaterialTheme.colorScheme.outlineVariant
+        ),
         modifier = modifier
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .then(if (compactHeader) Modifier else Modifier.fillMaxWidth())
+                .padding(
+                    horizontal = if (compactHeader) 10.dp else 14.dp,
+                    vertical = if (compactHeader) 5.dp else 8.dp
+                ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compactHeader) 8.dp else 12.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Storage,
                 contentDescription = null,
                 tint = statusColor,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(if (compactHeader) 14.dp else 16.dp)
             )
 
             Text(
-                text = if (storageInfo.isLowStorage) {
-                    "Penyimpanan hampir penuh! Sisa: ${StorageUtils.formatFileSize(storageInfo.availableBytes)}"
-                } else {
-                    "Penyimpanan Tersedia: ${StorageUtils.formatFileSize(storageInfo.availableBytes)} / ${StorageUtils.formatFileSize(storageInfo.totalBytes)}"
+                text = when {
+                    compactHeader -> "Sisa ${StorageUtils.formatFileSize(storageInfo.availableBytes)}"
+                    storageInfo.isLowStorage -> "Penyimpanan hampir penuh! Sisa: ${StorageUtils.formatFileSize(storageInfo.availableBytes)}"
+                    else -> "Penyimpanan Tersedia: ${StorageUtils.formatFileSize(storageInfo.availableBytes)} / ${StorageUtils.formatFileSize(storageInfo.totalBytes)}"
                 },
-                color = if (storageInfo.isLowStorage) Color(0xFFFF8A80) else Color.LightGray,
-                fontSize = 12.sp,
-                fontWeight = if (storageInfo.isLowStorage) FontWeight.Bold else FontWeight.Medium
+                color = if (storageInfo.isLowStorage) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = if (compactHeader) 11.sp else 12.sp,
+                fontWeight = if (storageInfo.isLowStorage) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1
             )
 
             LinearProgressIndicator(
                 progress = { storageInfo.usedFraction },
                 modifier = Modifier
-                    .weight(1f)
-                    .height(6.dp)
+                    .then(if (compactHeader) Modifier.width(56.dp) else Modifier.weight(1f))
+                    .height(if (compactHeader) 5.dp else 6.dp)
                     .clip(RoundedCornerShape(3.dp)),
                 color = statusColor,
-                trackColor = Color(0xFF333333)
+                trackColor = MaterialTheme.colorScheme.surfaceContainerLowest
             )
         }
     }

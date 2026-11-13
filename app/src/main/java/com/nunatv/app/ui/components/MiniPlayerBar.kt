@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,8 +57,8 @@ fun MiniPlayerBar(
     }
 
     Surface(
-        color = Color(0xFF1D1D1D),
-        tonalElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 4.dp,
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -67,8 +68,8 @@ fun MiniPlayerBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.5.dp),
-                    color = Color(0xFFE50914),
-                    trackColor = Color(0xFF2E2E2E)
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerLowest
                 )
             } else {
                 LinearProgressIndicator(
@@ -76,8 +77,8 @@ fun MiniPlayerBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.5.dp),
-                    color = Color(0xFFE50914),
-                    trackColor = Color(0xFF2E2E2E)
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerLowest
                 )
             }
 
@@ -111,7 +112,7 @@ fun MiniPlayerBar(
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(
-                                color = Color(0xFFE50914),
+                                color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -122,7 +123,7 @@ fun MiniPlayerBar(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = video.title,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -134,7 +135,7 @@ fun MiniPlayerBar(
                             playbackState.streamLoadError != null -> "Gagal memuat stream"
                             else -> video.author.ifBlank { video.category }
                         },
-                        color = if (playbackState.streamLoadError != null) Color(0xFFFF8A80) else Color.Gray,
+                        color = if (playbackState.streamLoadError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -148,7 +149,7 @@ fun MiniPlayerBar(
                     Icon(
                         imageVector = if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (playbackState.isPlaying) "Jeda" else "Putar",
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -161,7 +162,7 @@ fun MiniPlayerBar(
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Berikutnya",
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -174,7 +175,7 @@ fun MiniPlayerBar(
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Tutup Pemutar",
-                        tint = Color.LightGray,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }

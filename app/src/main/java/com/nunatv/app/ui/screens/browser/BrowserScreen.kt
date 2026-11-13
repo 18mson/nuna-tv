@@ -49,7 +49,7 @@ fun BrowserScreen(
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     val latestDownloadedIds by rememberUpdatedState(downloadedVideoIds)
 
-    val defaultResolution by appPreferences.selectedResolution.collectAsState(initial = VideoResolution.RES_1080P)
+    val defaultResolution by appPreferences.selectedResolution.collectAsState(initial = VideoResolution.HIGH)
 
     fun showDownloadBannerForUrl(url: String) {
         val videoId = YoutubeWebViewClient.extractVideoId(url) ?: url

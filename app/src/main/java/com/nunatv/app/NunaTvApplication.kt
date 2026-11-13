@@ -22,6 +22,10 @@ class NunaTvApplication : Application() {
         super.onCreate()
         instance = this
 
+        // Prioritaskan IPv4 untuk mempercepat koneksi network dan mencegah timeout IPv6 di Android
+        System.setProperty("java.net.preferIPv4Stack", "true")
+        System.setProperty("java.net.preferIPv6Addresses", "false")
+
         // 1. Inisialisasi Room Database
         database = NunaDatabase.getInstance(this)
 

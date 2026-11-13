@@ -197,7 +197,7 @@ fun DownloadPromptBanner(
                             .fillMaxWidth()
                             .height(3.dp)
                             .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp)),
-                        color = Color(0xFFE50914),
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = Color(0xFF2A2A2A)
                     )
                 }

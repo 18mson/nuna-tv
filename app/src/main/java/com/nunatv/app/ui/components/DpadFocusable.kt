@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,12 +71,13 @@ fun Modifier.dpadFocusable(
         label = "dpad_scale_anim"
     )
 
+    val onSurface = MaterialTheme.colorScheme.onSurface
     val resolvedBorderColor = focusedBorderColor ?: when (style) {
-        FocusStyle.CARD -> Color.White
-        FocusStyle.CTA -> Color.White
-        FocusStyle.PILL -> Color.White
-        FocusStyle.NAV -> Color.White.copy(alpha = 0.85f)
-        FocusStyle.ICON -> Color.White
+        FocusStyle.CARD -> onSurface
+        FocusStyle.CTA -> onSurface
+        FocusStyle.PILL -> onSurface
+        FocusStyle.NAV -> onSurface.copy(alpha = 0.85f)
+        FocusStyle.ICON -> onSurface
     }
 
     val resolvedBorderWidth = focusedBorderWidth ?: when (style) {
@@ -88,9 +90,9 @@ fun Modifier.dpadFocusable(
 
     val focusBackground = when {
         !isFocused -> Color.Transparent
-        style == FocusStyle.PILL -> Color.White.copy(alpha = 0.14f)
-        style == FocusStyle.NAV -> Color.White.copy(alpha = 0.16f)
-        style == FocusStyle.ICON -> Color.White.copy(alpha = 0.20f)
+        style == FocusStyle.PILL -> onSurface.copy(alpha = 0.12f)
+        style == FocusStyle.NAV -> onSurface.copy(alpha = 0.14f)
+        style == FocusStyle.ICON -> onSurface.copy(alpha = 0.18f)
         else -> Color.Transparent
     }
 

@@ -144,7 +144,13 @@ import kotlin.math.abs
 data class ChannelDestination(
     val channelId: String = "",
     val channelName: String = "",
-    val sourceVideoId: String = ""
+    val sourceVideoId: String = "",
+    val avatarUrl: String = "",
+    val bannerUrl: String = "",
+    val handle: String = "",
+    val subscriberCount: String = "",
+    val videoCount: String = "",
+    val description: String = ""
 )
 
 private val AVATAR_COLORS = listOf(
@@ -177,7 +183,19 @@ fun TvYoutubeScreen(
     val uiState by youtubeViewModel.uiState.collectAsState()
     val recentSearches by appPreferences.recentSearchQueries.collectAsState(initial = emptyList())
     val watchHistory by appPreferences.watchHistory.collectAsState(initial = emptyList())
-    val selectedResolution by appPreferences.selectedResolution.collectAsState(initial = VideoResolution.RES_1080P)
+    val selectedResolution by appPreferences.selectedResolution.collectAsState(initial = VideoResolution.HIGH)
+    val hideShortsEnabled by appPreferences.hideShortsEnabled.collectAsState(initial = false)
+
+    LaunchedEffect(hideShortsEnabled, uiState.activeCategory, uiState.contentFilter) {
+        if (hideShortsEnabled) {
+            if (uiState.activeCategory == "SHORTS") {
+                youtubeViewModel.loadRecommendedFeed(force = false)
+            }
+            if (uiState.contentFilter == YoutubeContentFilter.SHORTS) {
+                youtubeViewModel.setContentFilter(YoutubeContentFilter.ALL)
+            }
+        }
+    }
 
     val quickCategories = remember {
         listOf(
@@ -192,15 +210,35 @@ fun TvYoutubeScreen(
     }
 
     var showTvSearchDialog by remember { mutableStateOf(false) }
+    var showTvChannelSearchDialog by remember { mutableStateOf(false) }
     var showPasteLinkDialog by remember { mutableStateOf(false) }
     var showMobileFilterSheet by remember { mutableStateOf(false) }
     var pastedUrl by remember { mutableStateOf("") }
     var linkErrorMessage by remember { mutableStateOf<String?>(null) }
     var menuItemForCard by remember { mutableStateOf<YoutubeSearchItem?>(null) }
+    var channelSearchQuery by remember { mutableStateOf("") }
+    var channelSortTab by remember { mutableStateOf("ALL") }
+
+    LaunchedEffect(uiState.activeCategory, uiState.activeChannel?.channelId) {
+        if (uiState.activeCategory != "CHANNEL") {
+            channelSearchQuery = ""
+            channelSortTab = "ALL"
+        }
+    }
 
     val isShortsView = uiState.activeCategory == "SHORTS" || uiState.contentFilter == YoutubeContentFilter.SHORTS
 
-    val displayedResults = remember(uiState.results, uiState.shortsList, watchHistory, uiState.activeCategory, uiState.contentFilter, uiState.sortOption) {
+    val displayedResults = remember(
+        uiState.results,
+        uiState.shortsList,
+        watchHistory,
+        uiState.activeCategory,
+        uiState.contentFilter,
+        uiState.sortOption,
+        hideShortsEnabled,
+        channelSearchQuery,
+        channelSortTab
+    ) {
         val baseList = when {
             uiState.activeCategory == "WATCH_HISTORY" -> watchHistory
             uiState.contentFilter == YoutubeContentFilter.SHORTS && uiState.activeCategory != "SHORTS" -> {
@@ -208,7 +246,22 @@ fun TvYoutubeScreen(
             }
             else -> uiState.results
         }
-        YoutubeSearchRepository.filterAndSortItems(baseList, uiState.contentFilter, uiState.sortOption)
+        var filtered = YoutubeSearchRepository.filterAndSortItems(baseList, uiState.contentFilter, uiState.sortOption)
+        if (hideShortsEnabled) filtered = filtered.filterNot { it.isShort }
+
+        if (uiState.activeCategory == "CHANNEL") {
+            if (channelSearchQuery.isNotBlank()) {
+                val q = channelSearchQuery.trim().lowercase()
+                filtered = filtered.filter { it.title.lowercase().contains(q) || it.channel.lowercase().contains(q) }
+            }
+            if (channelSortTab == "POPULAR") {
+                filtered = filtered.sortedByDescending { item ->
+                    val digits = item.viewCountText.filter { it.isDigit() }
+                    digits.toLongOrNull() ?: 0L
+                }
+            }
+        }
+        filtered
     }
 
     val hasActiveFilterOrHistory = uiState.contentFilter != YoutubeContentFilter.ALL ||
@@ -261,7 +314,7 @@ fun TvYoutubeScreen(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0F0F0F))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         val isCompactMobile = !isTv && maxWidth < 600.dp
         val isMediumWidth = !isTv && maxWidth >= 600.dp && maxWidth < 900.dp
@@ -280,25 +333,26 @@ fun TvYoutubeScreen(
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            // 1. Header Pencarian (Ramping untuk Mobile, D-Pad besar untuk TV)
-            if (isTv) {
+            if (uiState.activeCategory != "CHANNEL") {
+                // 1. Header Pencarian (Ramping untuk Mobile, D-Pad besar untuk TV)
+                if (isTv) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF141414))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFF1E1E1E),
-                        border = BorderStroke(1.dp, Color(0xFF333333)),
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .height(48.dp)
                             .dpadFocusable(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(24.dp),
                                 style = FocusStyle.PILL,
                                 focusedScale = 1.01f,
                                 onClick = { showTvSearchDialog = true }
@@ -311,11 +365,16 @@ fun TvYoutubeScreen(
                                 .padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray)
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = uiState.searchQuery.ifBlank { "Cari video YouTube... (Klik / OK untuk ketik)" },
-                                color = if (uiState.searchQuery.isBlank()) Color.Gray else Color.White,
+                                color = if (uiState.searchQuery.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                                 fontSize = 14.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -323,29 +382,74 @@ fun TvYoutubeScreen(
                         }
                     }
 
-                    Button(
+                    Surface(
                         onClick = { showTvSearchDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
-                            .height(52.dp)
+                            .size(48.dp)
                             .dpadFocusable(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = CircleShape,
                                 style = FocusStyle.CTA,
                                 onClick = { showTvSearchDialog = true }
                             )
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = "Cari")
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Cari", fontWeight = FontWeight.Bold)
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Cari",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    val hasActiveTvFilter = uiState.contentFilter != YoutubeContentFilter.ALL ||
+                        uiState.sortOption != YoutubeSortOption.DEFAULT ||
+                        uiState.activeCategory == "WATCH_HISTORY" ||
+                        uiState.activeCategory.startsWith("HIST:")
+                    Surface(
+                        onClick = { showMobileFilterSheet = true },
+                        shape = RoundedCornerShape(24.dp),
+                        color = if (hasActiveTvFilter) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(
+                            1.dp,
+                            if (hasActiveTvFilter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .height(48.dp)
+                            .dpadFocusable(
+                                shape = RoundedCornerShape(24.dp),
+                                style = FocusStyle.PILL,
+                                onClick = { showMobileFilterSheet = true }
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Filter",
+                                tint = if (hasActiveTvFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(19.dp)
+                            )
+                            Text(
+                                text = "Filter",
+                                color = if (hasActiveTvFilter) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             } else {
-                // Header Mobile & Tablet: 1 baris ramping dengan tap target >= 44dp
+                // Header Mobile & Tablet: 1 baris ramping dengan tinggi seragam 46dp (>= 44dp tap target)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF121212))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
                         .padding(
                             horizontal = if (isCompactMobile) 12.dp else 16.dp,
                             vertical = 8.dp
@@ -354,12 +458,12 @@ fun TvYoutubeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF1E1E1E),
-                        border = BorderStroke(1.dp, Color(0xFF2E2E2E)),
+                        shape = RoundedCornerShape(23.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(46.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -370,7 +474,7 @@ fun TvYoutubeScreen(
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = Color(0xFF9E9E9E),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(19.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -380,8 +484,8 @@ fun TvYoutubeScreen(
                             ) {
                                 if (uiState.searchQuery.isEmpty()) {
                                     Text(
-                                        text = "Cari video atau Shorts...",
-                                        color = Color(0xFF888888),
+                                        text = if (hideShortsEnabled) "Cari video YouTube..." else "Cari video atau Shorts...",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 14.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -392,10 +496,10 @@ fun TvYoutubeScreen(
                                     onValueChange = { youtubeViewModel.updateSearchInput(it) },
                                     singleLine = true,
                                     textStyle = TextStyle(
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         fontSize = 14.sp
                                     ),
-                                    cursorBrush = SolidColor(Color(0xFFE50914)),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                     keyboardActions = KeyboardActions(
                                         onSearch = {
@@ -420,7 +524,7 @@ fun TvYoutubeScreen(
                                     Icon(
                                         imageVector = Icons.Default.Clear,
                                         contentDescription = "Hapus teks",
-                                        tint = Color(0xFF9E9E9E),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -428,22 +532,22 @@ fun TvYoutubeScreen(
                         }
                     }
 
-                    // Tombol Filter & Riwayat (ModalBottomSheet)
+                    // Tombol Filter & Riwayat
                     Surface(
                         onClick = { showMobileFilterSheet = true },
                         shape = CircleShape,
-                        color = if (hasActiveFilterOrHistory) Color(0xFF2B1819) else Color(0xFF1E1E1E),
+                        color = if (hasActiveFilterOrHistory) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(
                             1.dp,
-                            if (hasActiveFilterOrHistory) Color(0xFFE50914) else Color(0xFF2E2E2E)
+                            if (hasActiveFilterOrHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                         ),
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = "Filter dan Riwayat",
-                                tint = Color.White,
+                                tint = if (hasActiveFilterOrHistory) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(20.dp)
                             )
                             if (hasActiveFilterOrHistory) {
@@ -452,7 +556,7 @@ fun TvYoutubeScreen(
                                         .align(Alignment.TopEnd)
                                         .padding(top = 8.dp, end = 8.dp)
                                         .size(7.dp)
-                                        .background(Color(0xFFE50914), CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
                                 )
                             }
                         }
@@ -468,80 +572,18 @@ fun TvYoutubeScreen(
                             showPasteLinkDialog = true
                         },
                         shape = CircleShape,
-                        color = Color(0xFF1E1E1E),
-                        border = BorderStroke(1.dp, Color(0xFF2E2E2E)),
-                        modifier = Modifier.size(44.dp)
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.size(46.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.ContentPaste,
                                 contentDescription = "Tempel Link YouTube",
-                                tint = Color.White,
+                                tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(19.dp)
                             )
                         }
-                    }
-                }
-            }
-
-            // Header Channel Utama jika sedang membuka halaman channel
-            if (uiState.activeCategory == "CHANNEL" && uiState.activeChannel != null) {
-                val currentCh = uiState.activeChannel!!
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF1A1A1A))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Surface(
-                        onClick = { youtubeViewModel.loadRecommendedFeed(force = true) },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF282828),
-                        modifier = Modifier
-                            .heightIn(min = 38.dp)
-                            .dpadFocusable(
-                                shape = RoundedCornerShape(8.dp),
-                                style = FocusStyle.PILL,
-                                onClick = { youtubeViewModel.loadRecommendedFeed(force = true) }
-                            )
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Kembali",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Kembali", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = null,
-                        tint = Color(0xFFE50914),
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = currentCh.channelName.ifBlank { "Channel YouTube" },
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${displayedResults.size} video tersedia",
-                            color = Color.Gray,
-                            fontSize = 11.sp
-                        )
                     }
                 }
             }
@@ -561,7 +603,7 @@ fun TvYoutubeScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF121212))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     ) {
                         // Beranda / Untuk Anda
                         item {
@@ -574,15 +616,17 @@ fun TvYoutubeScreen(
                             )
                         }
 
-                        // Shorts (Video Vertikal)
-                        item {
-                            TvChip(
-                                label = "Shorts",
-                                selected = uiState.activeCategory == "SHORTS",
-                                leadingIcon = Icons.Default.Bolt,
-                                leadingIconTint = Color(0xFFFF5252),
-                                onClick = { youtubeViewModel.loadShortsFeed() }
-                            )
+                        // Shorts (Video Vertikal) - disembunyikan jika user aktifkan Hide Shorts
+                        if (!hideShortsEnabled) {
+                            item {
+                                TvChip(
+                                    label = "Shorts",
+                                    selected = uiState.activeCategory == "SHORTS",
+                                    leadingIcon = Icons.Default.Bolt,
+                                    leadingIconTint = Color(0xFFFF5252),
+                                    onClick = { youtubeViewModel.loadShortsFeed() }
+                                )
+                            }
                         }
 
                         // Live Cepat pada Mobile (untuk TV juga berguna)
@@ -594,29 +638,6 @@ fun TvYoutubeScreen(
                             )
                         }
 
-                        if (isTv) {
-                            item {
-                                TvChip(
-                                    label = if (watchHistory.isNotEmpty()) "Riwayat (${watchHistory.size})" else "Riwayat",
-                                    selected = uiState.activeCategory == "WATCH_HISTORY",
-                                    leadingIcon = Icons.Default.History,
-                                    leadingIconTint = Color(0xFF90CAF9),
-                                    onClick = { youtubeViewModel.selectWatchHistoryMode() }
-                                )
-                            }
-
-                            items(recentSearches.take(3)) { historyQuery ->
-                                val catKey = "HIST:$historyQuery"
-                                TvChip(
-                                    label = historyQuery,
-                                    selected = uiState.activeCategory == catKey,
-                                    leadingIcon = Icons.Default.History,
-                                    leadingIconTint = Color.Gray,
-                                    onClick = { youtubeViewModel.performSearch(historyQuery, categoryKey = catKey) }
-                                )
-                            }
-                        }
-
                         items(quickCategories) { (query, label) ->
                             TvChip(
                                 label = label,
@@ -626,8 +647,8 @@ fun TvYoutubeScreen(
                         }
                     }
 
-                    // Baris Filter & Sort khusus layar lebar / TV (di HP pindah ke BottomSheet agar hemat ruang)
-                    if (isWideOrTv) {
+                    // Baris Filter & Sort khusus tablet non-TV (di HP & TV pindah ke panel Filter agar ringkas)
+                    if (!isTv && isWideOrTv) {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -734,8 +755,302 @@ fun TvYoutubeScreen(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier.heightIn(min = 32.dp)
                     ) {
-                        Text("Reset", color = Color(0xFFE50914), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Reset", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+            }
+            } else if (uiState.activeChannel != null) {
+                val currentCh = uiState.activeChannel!!
+                val avatarColor = remember(currentCh.channelName) {
+                    AVATAR_COLORS[abs(currentCh.channelName.hashCode()) % AVATAR_COLORS.size]
+                }
+                val avatarLetter = remember(currentCh.channelName) {
+                    currentCh.channelName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "Y"
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    // 1. BANNER CHANNEL (Tinggi & responsif dengan gradient fallback & scrim)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (isCompactMobile) 112.dp else 148.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                )
+                            )
+                    ) {
+                        if (currentCh.bannerUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = currentCh.bannerUrl,
+                                contentDescription = "Banner ${currentCh.channelName}",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(end = 24.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(92.dp)
+                                )
+                            }
+                        }
+
+                        // Gradient Scrim agar tombol kembali & konten kontras
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Black.copy(alpha = 0.45f),
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.65f)
+                                        )
+                                    )
+                                )
+                        )
+
+                        // Tombol Kembali melayang di kiri atas banner
+                        Surface(
+                            onClick = { youtubeViewModel.loadRecommendedFeed(force = true) },
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color.Black.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(start = 12.dp, top = 12.dp)
+                                .height(36.dp)
+                                .dpadFocusable(
+                                    shape = RoundedCornerShape(20.dp),
+                                    style = FocusStyle.PILL,
+                                    onClick = { youtubeViewModel.loadRecommendedFeed(force = true) }
+                                )
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Kembali ke Beranda",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Kembali",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. PROFIL & METADATA CHANNEL (Avatar bulat, Nama, Handle, Subscribers)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = if (isCompactMobile) 16.dp else 24.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = avatarColor,
+                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.background),
+                            modifier = Modifier.size(if (isCompactMobile) 64.dp else 74.dp)
+                        ) {
+                            if (currentCh.avatarUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = currentCh.avatarUrl,
+                                    contentDescription = currentCh.channelName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = avatarLetter,
+                                        color = Color.White,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = currentCh.channelName.ifBlank { "Channel YouTube" },
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = if (isCompactMobile) 17.sp else 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            val statsList = buildList {
+                                if (currentCh.handle.isNotBlank()) add(currentCh.handle)
+                                if (currentCh.subscriberCount.isNotBlank()) add(currentCh.subscriberCount)
+                                add(currentCh.videoCount.ifBlank { "${displayedResults.size} video" })
+                            }
+                            Text(
+                                text = statsList.joinToString(" • "),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+
+                            if (currentCh.description.isNotBlank()) {
+                                Text(
+                                    text = currentCh.description,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                        fontSize = 11.sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. BARIS PENCARIAN DI DALAM CHANNEL & TAB FILTER
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = if (isCompactMobile) 16.dp else 24.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .then(
+                                    if (isTv) {
+                                        Modifier
+                                            .dpadFocusable(
+                                                shape = RoundedCornerShape(24.dp),
+                                                style = FocusStyle.PILL,
+                                                onClick = { showTvChannelSearchDialog = true }
+                                            )
+                                            .clickable { showTvChannelSearchDialog = true }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Cari di channel",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (isTv) {
+                                        Text(
+                                            text = channelSearchQuery.ifBlank { "Cari di ${currentCh.channelName.ifBlank { "channel ini" }}..." },
+                                            color = if (channelSearchQuery.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    } else {
+                                        if (channelSearchQuery.isEmpty()) {
+                                            Text(
+                                                text = "Cari di ${currentCh.channelName.ifBlank { "channel ini" }}...",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 13.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        BasicTextField(
+                                            value = channelSearchQuery,
+                                            onValueChange = { channelSearchQuery = it },
+                                            singleLine = true,
+                                            textStyle = TextStyle(
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontSize = 13.sp
+                                            ),
+                                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                            keyboardActions = KeyboardActions(
+                                                onSearch = { keyboardController?.hide() }
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                                if (channelSearchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { channelSearchQuery = "" },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Hapus pencarian",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        TvChip(
+                            label = "Semua",
+                            selected = channelSortTab == "ALL",
+                            onClick = { channelSortTab = "ALL" }
+                        )
+                        TvChip(
+                            label = "Populer",
+                            selected = channelSortTab == "POPULAR",
+                            leadingIcon = Icons.Default.Bolt,
+                            onClick = { channelSortTab = "POPULAR" }
+                        )
+                    }
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             }
 
@@ -748,9 +1063,9 @@ fun TvYoutubeScreen(
                                 modifier = Modifier.align(Alignment.Center),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                CircularProgressIndicator(color = Color(0xFFE50914))
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.height(12.dp))
-                                Text("Memuat video YouTube...", color = Color.LightGray)
+                                Text("Memuat video YouTube...", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         uiState.activeCategory == "WATCH_HISTORY" && watchHistory.isEmpty() -> {
@@ -762,7 +1077,7 @@ fun TvYoutubeScreen(
                             ) {
                                 Text(
                                     text = "Belum ada riwayat video yang ditonton.",
-                                    color = Color.LightGray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -773,11 +1088,14 @@ fun TvYoutubeScreen(
                                     .padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text(uiState.errorMessage ?: "", color = Color.LightGray)
+                                Text(uiState.errorMessage ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Button(
                                     onClick = { youtubeViewModel.refreshActiveTab() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    ),
                                     modifier = Modifier.dpadFocusable(onClick = { youtubeViewModel.refreshActiveTab() })
                                 ) {
                                     Text("Coba Lagi")
@@ -794,12 +1112,15 @@ fun TvYoutubeScreen(
                             ) {
                                 Text(
                                     text = "Tidak ada video yang cocok dengan filter \"${uiState.contentFilter.label}\".",
-                                    color = Color.LightGray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Button(
                                         onClick = { youtubeViewModel.setContentFilter(YoutubeContentFilter.ALL) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
                                         modifier = Modifier.dpadFocusable(
                                             style = FocusStyle.CTA,
                                             onClick = { youtubeViewModel.setContentFilter(YoutubeContentFilter.ALL) }
@@ -1018,19 +1339,10 @@ fun TvYoutubeScreen(
 
         // Bottom Sheet Filter & Riwayat Khusus Mobile/Tablet
         if (showMobileFilterSheet) {
-            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-            ModalBottomSheet(
-                onDismissRequest = { showMobileFilterSheet = false },
-                sheetState = sheetState,
-                containerColor = Color(0xFF1A1A1A),
-                contentColor = Color.White
-            ) {
+            val firstFilterFocus = remember { FocusRequester() }
+            val filterSheetBody: @Composable (Modifier) -> Unit = { bodyModifier ->
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    modifier = bodyModifier,
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Row(
@@ -1044,33 +1356,47 @@ fun TvYoutubeScreen(
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
-                        TextButton(
-                            onClick = {
-                                showMobileFilterSheet = false
-                                youtubeViewModel.refreshActiveTab()
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TvChip(
+                                label = "Segarkan",
+                                selected = false,
+                                leadingIcon = Icons.Default.Refresh,
+                                leadingIconTint = MaterialTheme.colorScheme.primary,
+                                isOutlined = true,
+                                modifier = if (isTv) Modifier.focusRequester(firstFilterFocus) else Modifier,
+                                onClick = {
+                                    showMobileFilterSheet = false
+                                    youtubeViewModel.refreshActiveTab()
+                                }
+                            )
+                            if (isTv) {
+                                TvChip(
+                                    label = "Tutup",
+                                    selected = false,
+                                    isOutlined = true,
+                                    onClick = { showMobileFilterSheet = false }
+                                )
                             }
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFFE50914), modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Segarkan", color = Color(0xFFE50914), fontWeight = FontWeight.SemiBold)
                         }
                     }
 
-                    Text("Tipe Konten", color = Color.LightGray, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Tipe Konten", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        YoutubeContentFilter.entries.forEach { filter ->
-                            TvChip(
-                                label = filter.label,
-                                selected = uiState.contentFilter == filter,
-                                onClick = {
-                                    youtubeViewModel.setContentFilter(filter)
-                                    showMobileFilterSheet = false
-                                }
-                            )
-                        }
+                        YoutubeContentFilter.entries
+                            .filterNot { hideShortsEnabled && it == YoutubeContentFilter.SHORTS }
+                            .forEach { filter ->
+                                TvChip(
+                                    label = filter.label,
+                                    selected = uiState.contentFilter == filter,
+                                    onClick = {
+                                        youtubeViewModel.setContentFilter(filter)
+                                        showMobileFilterSheet = false
+                                    }
+                                )
+                            }
                     }
 
                     Text("Urutkan", color = Color.LightGray, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -1141,6 +1467,50 @@ fun TvYoutubeScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
+
+            if (isTv) {
+                LaunchedEffect(Unit) {
+                    delay(80)
+                    runCatching { firstFilterFocus.requestFocus() }
+                }
+                Dialog(
+                    onDismissRequest = { showMobileFilterSheet = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier
+                            .widthIn(min = 420.dp, max = 660.dp)
+                            .heightIn(max = 520.dp)
+                            .padding(20.dp)
+                    ) {
+                        filterSheetBody(
+                            Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(20.dp)
+                        )
+                    }
+                }
+            } else {
+                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ModalBottomSheet(
+                    onDismissRequest = { showMobileFilterSheet = false },
+                    sheetState = sheetState,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
+                    filterSheetBody(
+                        Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 8.dp)
+                    )
+                }
+            }
         }
 
         // Dialog Tempel Link YouTube
@@ -1180,7 +1550,7 @@ fun TvYoutubeScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF1E1E1E),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     border = BorderStroke(1.dp, Color(0xFF2E2E2E)),
                     tonalElevation = 8.dp,
                     modifier = Modifier
@@ -1280,12 +1650,12 @@ fun TvYoutubeScreen(
                                 }
                             },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFFE50914),
-                                unfocusedBorderColor = Color(0xFF444444),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedContainerColor = Color(0xFF141414),
-                                unfocusedContainerColor = Color(0xFF141414)
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
                             ),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -1308,8 +1678,11 @@ fun TvYoutubeScreen(
                                 ) {
                                     Button(
                                         onClick = triggerPlayPasted,
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1341,8 +1714,11 @@ fun TvYoutubeScreen(
                                 ) {
                                     Button(
                                         onClick = triggerPlayPasted,
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                         modifier = Modifier
                                             .weight(1f)
@@ -1396,6 +1772,17 @@ fun TvYoutubeScreen(
             )
         }
 
+        if (showTvChannelSearchDialog) {
+            TvSearchDialog(
+                initialQuery = channelSearchQuery,
+                onSearch = { newQuery ->
+                    showTvChannelSearchDialog = false
+                    channelSearchQuery = newQuery
+                },
+                onDismiss = { showTvChannelSearchDialog = false }
+            )
+        }
+
         // Menu Opsi Kartu Video YouTube
         menuItemForCard?.let { target ->
             val firstMenuFocus = remember { FocusRequester() }
@@ -1437,7 +1824,7 @@ fun TvYoutubeScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF1E1E1E),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     border = BorderStroke(1.dp, Color(0xFF2E2E2E)),
                     tonalElevation = 8.dp,
                     modifier = Modifier
@@ -1476,8 +1863,11 @@ fun TvYoutubeScreen(
                                     if (target.isShort) uiState.shortsList.ifEmpty { displayedResults } else displayedResults
                                 )
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 46.dp)
@@ -1809,14 +2199,14 @@ private fun MobileYoutubeFeedItem(
             if (item.durationText.isNotBlank()) {
                 Text(
                     text = item.durationText,
-                    color = Color.White,
+                    color = if (isLive) MaterialTheme.colorScheme.onPrimary else Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(8.dp)
                         .background(
-                            if (isLive) Color(0xFFE50914) else Color(0xCC000000),
+                            if (isLive) MaterialTheme.colorScheme.primary else Color(0xCC000000),
                             RoundedCornerShape(5.dp)
                         )
                         .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -1900,11 +2290,11 @@ private fun YoutubeShortCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF191919)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = modifier
             .fillMaxWidth()
-            .dpadFocusable(shape = RoundedCornerShape(12.dp), onClick = onClick)
+            .dpadFocusable(shape = RoundedCornerShape(16.dp), onClick = onClick)
             .combinedClickable(onClick = onClick, onLongClick = onOpenMenu)
     ) {
         Box(
@@ -2021,12 +2411,12 @@ private fun TvYoutubeVideoCard(
     }
 
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier
             .fillMaxWidth()
             .dpadFocusable(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 onClick = onClick
             )
             .onPreviewKeyEvent { keyEvent ->
@@ -2112,14 +2502,14 @@ private fun TvYoutubeVideoCard(
                 if (item.durationText.isNotBlank()) {
                     Text(
                         text = item.durationText,
-                        color = Color.White,
+                        color = if (isLive) MaterialTheme.colorScheme.onPrimary else Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(8.dp)
                             .background(
-                                if (isLive) Color(0xFFE50914) else Color(0xCC000000),
+                                if (isLive) MaterialTheme.colorScheme.primary else Color(0xCC000000),
                                 RoundedCornerShape(4.dp)
                             )
                             .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -2137,7 +2527,7 @@ private fun TvYoutubeVideoCard(
                     Text(
                         text = item.title,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         ),
                         maxLines = 2,
@@ -2154,7 +2544,7 @@ private fun TvYoutubeVideoCard(
                     Text(
                         text = subText,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
                         ),
                         maxLines = 1,
@@ -2170,7 +2560,7 @@ private fun TvYoutubeVideoCard(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "Menu Video",
-                            tint = Color.LightGray,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                     }

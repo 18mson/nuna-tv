@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,14 +36,22 @@ fun TvChip(
     leadingIconTint: Color? = null,
     isOutlined: Boolean = false
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(50)
     val containerColor = when {
-        selected -> Color(0xFFE50914)
+        selected -> MaterialTheme.colorScheme.primary
         isOutlined -> Color.Transparent
-        else -> Color(0xFF222222)
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    val contentColor = if (selected || isOutlined) Color.White else Color.LightGray
-    val border = if (isOutlined && !selected) BorderStroke(1.dp, Color(0xFF555555)) else null
+    val contentColor = when {
+        selected -> MaterialTheme.colorScheme.onPrimary
+        isOutlined -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val border = if (isOutlined && !selected) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    } else {
+        null
+    }
 
     Surface(
         shape = shape,
@@ -67,7 +76,7 @@ fun TvChip(
                 Icon(
                     imageVector = leadingIcon,
                     contentDescription = null,
-                    tint = if (selected) Color.White else (leadingIconTint ?: contentColor),
+                    tint = if (selected) MaterialTheme.colorScheme.onPrimary else (leadingIconTint ?: contentColor),
                     modifier = Modifier.size(16.dp)
                 )
             }

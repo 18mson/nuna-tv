@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -139,8 +140,8 @@ fun OnboardingDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF1A1A1A),
-            border = BorderStroke(1.dp, Color(0xFF2F2F2F)),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 10.dp,
             modifier = Modifier
                 .fillMaxWidth(0.92f)
@@ -168,13 +169,13 @@ fun OnboardingDialog(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFE50914)),
+                                    .background(MaterialTheme.colorScheme.primary),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = active.icon,
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -200,14 +201,14 @@ fun OnboardingDialog(
 
                     Text(
                         text = active.title,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
 
                     Text(
                         text = active.subtitle,
-                        color = Color.LightGray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                         lineHeight = 20.sp
                     )
@@ -216,8 +217,8 @@ fun OnboardingDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF121212))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
                             .padding(14.dp)
                     ) {
                         active.points.forEachIndexed { idx, line ->
@@ -230,11 +231,11 @@ fun OnboardingDialog(
                                         .padding(top = 5.dp)
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFFE50914))
+                                        .background(MaterialTheme.colorScheme.primary)
                                 )
                                 Text(
                                     text = line,
-                                    color = Color(0xFFDDDDDD),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 13.sp,
                                     lineHeight = 18.sp
                                 )
@@ -257,7 +258,7 @@ fun OnboardingDialog(
                                     .width(if (idx == currentStep) 22.dp else 8.dp)
                                     .height(6.dp)
                                     .clip(RoundedCornerShape(3.dp))
-                                    .background(if (idx == currentStep) Color(0xFFE50914) else Color(0xFF3A3A3A))
+                                    .background(if (idx == currentStep) MaterialTheme.colorScheme.primary else Color(0xFF3A3A3A))
                             )
                         }
                     }
@@ -272,8 +273,11 @@ fun OnboardingDialog(
                                 onClick = {
                                     if (isLast) onFinish() else currentStep++
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = 46.dp)
@@ -340,8 +344,11 @@ fun OnboardingDialog(
                                 onClick = {
                                     if (isLast) onFinish() else currentStep++
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier
                                     .weight(1f)
                                     .heightIn(min = 46.dp)

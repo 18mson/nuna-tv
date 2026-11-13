@@ -42,7 +42,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import com.nunatv.app.NunaTvApplication
 import com.nunatv.app.data.local.DownloadStatus
+import com.nunatv.app.data.preferences.AppColorPalette
 import com.nunatv.app.data.preferences.AppPreferences
+import com.nunatv.app.data.preferences.AppThemeMode
 import com.nunatv.app.data.preferences.AudioBoostLevel
 import com.nunatv.app.data.preferences.VideoResolution
 import com.nunatv.app.data.repository.VideoRepository
@@ -58,6 +60,8 @@ import com.nunatv.app.ui.components.MiniPlayerBar
 import com.nunatv.app.ui.components.OnboardingDialog
 import com.nunatv.app.ui.components.dpadFocusable
 import com.nunatv.app.ui.navigation.Screen
+import com.nunatv.app.ui.theme.NunaTheme
+import androidx.compose.material3.MaterialTheme
 import com.nunatv.app.ui.screens.home.HomeScreen
 import com.nunatv.app.ui.screens.home.HomeViewModel
 import com.nunatv.app.ui.screens.player.PlayerScreen
@@ -151,11 +155,13 @@ class MainActivity : ComponentActivity() {
                 completedVideosByVideoId.keys + activeDownloadIds
             }
 
-            val defaultResolution by appPreferences.selectedResolution.collectAsState(initial = VideoResolution.RES_1080P)
+            val defaultResolution by appPreferences.selectedResolution.collectAsState(initial = VideoResolution.HIGH)
             val audioBoostLevel by appPreferences.audioBoostLevel.collectAsState(initial = AudioBoostLevel.OFF)
             val backgroundPlaybackEnabled by appPreferences.backgroundPlaybackEnabled.collectAsState(initial = false)
             val pipEnabled by appPreferences.pipEnabled.collectAsState(initial = false)
             val hasSeenOnboarding by appPreferences.hasSeenOnboarding.collectAsState(initial = null)
+            val colorPalette by appPreferences.colorPalette.collectAsState(initial = AppColorPalette.RED)
+            val themeMode by appPreferences.themeMode.collectAsState(initial = AppThemeMode.DARK)
             val playbackState by MediaPlaybackManager.state.collectAsState()
 
             var currentTab by rememberSaveable { mutableStateOf(Screen.Home.route) }
@@ -208,6 +214,7 @@ class MainActivity : ComponentActivity() {
                 currentTab = Screen.Home.route
             }
 
+            NunaTheme(palette = colorPalette, themeMode = themeMode) {
             AdaptiveScaffold(
                 isTv = isTvDevice,
                 currentRoute = if (showFullPlayer) "player" else currentTab,
@@ -302,6 +309,14 @@ class MainActivity : ComponentActivity() {
                                         video = video,
                                         allLocalVideos = completedVideos
                                     )
+                                },
+                                onPlayPlaylist = { playlist, startIndex ->
+                                    val target = playlist.getOrNull(startIndex) ?: return@HomeScreen
+                                    MediaPlaybackManager.openLocalVideo(
+                                        context = this@MainActivity,
+                                        video = target,
+                                        allLocalVideos = playlist
+                                    )
                                 }
                             )
                         }
@@ -385,7 +400,7 @@ class MainActivity : ComponentActivity() {
                                     MediaPlaybackManager.stopAndClear(this@MainActivity)
                                     currentTab = Screen.Home.route
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 modifier = Modifier.dpadFocusable(
                                     style = FocusStyle.CTA,
                                     onClick = {
@@ -400,7 +415,7 @@ class MainActivity : ComponentActivity() {
                         } else {
                             Button(
                                 onClick = { downloadErrorDialog = null },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 modifier = Modifier.dpadFocusable(
                                     style = FocusStyle.CTA,
                                     onClick = { downloadErrorDialog = null }
@@ -419,12 +434,13 @@ class MainActivity : ComponentActivity() {
                                     onClick = { downloadErrorDialog = null }
                                 )
                             ) {
-                                Text("Tutup", color = Color.LightGray)
+                                Text("Tutup", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     },
-                    containerColor = Color(0xFF1E1E1E)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 )
+            }
             }
         }
     }

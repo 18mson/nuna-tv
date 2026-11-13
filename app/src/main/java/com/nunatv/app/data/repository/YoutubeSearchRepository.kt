@@ -3,6 +3,7 @@ package com.nunatv.app.data.repository
 import android.content.Context
 import android.util.Log
 import com.nunatv.app.downloader.YoutubeDlManager
+import com.nunatv.app.ui.screens.youtube.ChannelDestination
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,11 @@ data class YoutubeSearchItem(
         get() = durationText.equals("SHORTS", ignoreCase = true) ||
             title.contains("#shorts", ignoreCase = true)
 }
+
+data class ChannelDataResult(
+    val channel: ChannelDestination,
+    val videos: List<YoutubeSearchItem>
+)
 
 enum class YoutubeContentFilter(val label: String) {
     ALL("Semua"),
@@ -182,51 +188,68 @@ object YoutubeSearchRepository {
     }
 
     /**
-     * Memuat daftar video dari halaman utama suatu Channel YouTube.
+     * Memuat daftar video dan detail metadata profil/banner dari suatu Channel YouTube.
      */
-    suspend fun getChannelVideos(
+    suspend fun getChannelData(
         context: Context,
         channelId: String?,
-        channelNameFallback: String?
-    ): Result<List<YoutubeSearchItem>> = withContext(Dispatchers.IO) {
+        channelNameFallback: String?,
+        sourceVideoId: String = ""
+    ): Result<ChannelDataResult> = withContext(Dispatchers.IO) {
         val cleanChannelId = channelId?.trim().orEmpty()
+        var destination = ChannelDestination(
+            channelId = cleanChannelId,
+            channelName = channelNameFallback?.trim().orEmpty().ifBlank { "Channel YouTube" },
+            sourceVideoId = sourceVideoId
+        )
+
         if (cleanChannelId.startsWith("UC")) {
             try {
-                // Coba ambil tab Videos channel via /youtubei/v1/browse
+                // 1. Ambil tab Videos channel via /youtubei/v1/browse dengan params video
                 val browseWithTab = postInnertubeJson(INNERTUBE_BROWSE_URL, JSONObject().apply {
                     put("context", buildWebContext())
                     put("browseId", cleanChannelId)
                     put("params", "EgZ2aWRlb3PyBgQKAjoA")
                 })
+
+                destination = parseChannelMetadata(browseWithTab, destination)
+
                 val tabVideos = mutableListOf<YoutubeSearchItem>()
                 val seen = mutableSetOf<String>()
                 extractVideoRenderers(browseWithTab, tabVideos, seen)
+
                 if (tabVideos.isNotEmpty()) {
-                    val enriched = if (!channelNameFallback.isNullOrBlank()) {
-                        tabVideos.map { item ->
-                            if (item.channel == "YouTube" || item.channel.isBlank()) {
-                                item.copy(channel = channelNameFallback, channelId = cleanChannelId)
-                            } else {
-                                item.copy(channelId = item.channelId.ifBlank { cleanChannelId })
-                            }
+                    val actualChannelName = destination.channelName.ifBlank { channelNameFallback.orEmpty() }
+                    val enriched = tabVideos.map { item ->
+                        if (item.channel == "YouTube" || item.channel.isBlank()) {
+                            item.copy(channel = actualChannelName, channelId = cleanChannelId)
+                        } else {
+                            item.copy(channelId = item.channelId.ifBlank { cleanChannelId })
                         }
-                    } else {
-                        tabVideos.map { it.copy(channelId = it.channelId.ifBlank { cleanChannelId }) }
                     }
-                    return@withContext Result.success(enriched)
+                    return@withContext Result.success(ChannelDataResult(destination, enriched))
                 }
 
-                // Fallback ke halaman utama (Home) channel tanpa params
+                // 2. Fallback ke halaman utama (Home) channel tanpa params jika tab videos kosong
                 val browseHome = postInnertubeJson(INNERTUBE_BROWSE_URL, JSONObject().apply {
                     put("context", buildWebContext())
                     put("browseId", cleanChannelId)
                 })
+
+                destination = parseChannelMetadata(browseHome, destination)
+
                 val homeVideos = mutableListOf<YoutubeSearchItem>()
                 extractVideoRenderers(browseHome, homeVideos, mutableSetOf())
                 if (homeVideos.isNotEmpty()) {
-                    return@withContext Result.success(
-                        homeVideos.map { it.copy(channelId = it.channelId.ifBlank { cleanChannelId }) }
-                    )
+                    val actualChannelName = destination.channelName.ifBlank { channelNameFallback.orEmpty() }
+                    val enriched = homeVideos.map { item ->
+                        if (item.channel == "YouTube" || item.channel.isBlank()) {
+                            item.copy(channel = actualChannelName, channelId = cleanChannelId)
+                        } else {
+                            item.copy(channelId = item.channelId.ifBlank { cleanChannelId })
+                        }
+                    }
+                    return@withContext Result.success(ChannelDataResult(destination, enriched))
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Gagal browse channel $cleanChannelId: ${e.message}")
@@ -235,9 +258,142 @@ object YoutubeSearchRepository {
 
         val fallbackQuery = channelNameFallback?.trim().orEmpty()
         if (fallbackQuery.isNotBlank()) {
-            return@withContext search(context, fallbackQuery)
+            val searchRes = search(context, fallbackQuery)
+            return@withContext searchRes.map { videos ->
+                ChannelDataResult(destination, videos)
+            }
         }
         Result.failure(IllegalStateException("Informasi channel tidak tersedia."))
+    }
+
+    suspend fun getChannelVideos(
+        context: Context,
+        channelId: String?,
+        channelNameFallback: String?
+    ): Result<List<YoutubeSearchItem>> = getChannelData(context, channelId, channelNameFallback).map { it.videos }
+
+    private fun parseChannelMetadata(root: JSONObject, fallback: ChannelDestination): ChannelDestination {
+        var name = fallback.channelName
+        var avatarUrl = fallback.avatarUrl
+        var bannerUrl = fallback.bannerUrl
+        var handle = fallback.handle
+        var subCount = fallback.subscriberCount
+        var vidCount = fallback.videoCount
+        var description = fallback.description
+
+        val header = root.optJSONObject("header")
+        if (header != null) {
+            val c4 = header.optJSONObject("c4TabbedHeaderRenderer")
+            if (c4 != null) {
+                val c4Title = c4.optString("title", "").trim()
+                if (c4Title.isNotBlank()) name = c4Title
+
+                val avThumbs = c4.optJSONObject("avatar")?.optJSONArray("thumbnails")
+                val av = getBestThumbnailUrl(avThumbs)
+                if (av.isNotBlank()) avatarUrl = av
+
+                val banThumbs = (c4.optJSONObject("tvBanner")
+                    ?: c4.optJSONObject("banner")
+                    ?: c4.optJSONObject("mobileBanner"))?.optJSONArray("thumbnails")
+                val ban = getBestThumbnailUrl(banThumbs)
+                if (ban.isNotBlank()) bannerUrl = ban
+
+                val sc = readTextRuns(c4.optJSONObject("subscriberCountText")).ifBlank {
+                    c4.optJSONObject("subscriberCountText")?.optString("simpleText", "") ?: ""
+                }
+                if (sc.isNotBlank()) subCount = sc
+
+                val vc = readTextRuns(c4.optJSONObject("videosCountText"))
+                if (vc.isNotBlank()) vidCount = vc
+            }
+
+            val phr = header.optJSONObject("pageHeaderRenderer")?.optJSONObject("content")?.optJSONObject("pageHeaderViewModel")
+            if (phr != null) {
+                val phrTitle = phr.optJSONObject("title")?.optJSONObject("dynamicTextViewModel")
+                    ?.optJSONObject("text")?.optString("content", "")?.trim().orEmpty()
+                if (phrTitle.isNotBlank()) name = phrTitle
+
+                val avSources = phr.optJSONObject("image")?.optJSONObject("decoratedAvatarViewModel")
+                    ?.optJSONObject("avatar")?.optJSONObject("avatarViewModel")?.optJSONObject("image")?.optJSONArray("sources")
+                val av = getBestThumbnailUrl(avSources)
+                if (av.isNotBlank()) avatarUrl = av
+
+                val banSources = phr.optJSONObject("banner")?.optJSONObject("imageBannerViewModel")
+                    ?.optJSONObject("image")?.optJSONArray("sources")
+                val ban = getBestThumbnailUrl(banSources)
+                if (ban.isNotBlank()) bannerUrl = ban
+
+                val metadataRows = phr.optJSONObject("metadata")?.optJSONObject("contentMetadataViewModel")?.optJSONArray("metadataRows")
+                if (metadataRows != null) {
+                    for (r in 0 until metadataRows.length()) {
+                        val parts = metadataRows.optJSONObject(r)?.optJSONArray("metadataParts") ?: continue
+                        for (p in 0 until parts.length()) {
+                            val contentText = parts.optJSONObject(p)?.optJSONObject("text")?.optString("content", "")?.trim().orEmpty()
+                            if (contentText.startsWith("@")) {
+                                handle = contentText
+                            } else if (contentText.contains("sub", ignoreCase = true) || contentText.contains("pelanggan", ignoreCase = true)) {
+                                subCount = contentText
+                            } else if (contentText.contains("video", ignoreCase = true)) {
+                                vidCount = contentText
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val cmr = root.optJSONObject("metadata")?.optJSONObject("channelMetadataRenderer")
+        if (cmr != null) {
+            val cmrTitle = cmr.optString("title", "").trim()
+            if (name.isBlank() || name == "Channel YouTube") {
+                if (cmrTitle.isNotBlank()) name = cmrTitle
+            }
+            val vanity = cmr.optString("vanityChannelUrl", "").trim()
+            if (vanity.contains("/@") && handle.isBlank()) {
+                handle = "@" + vanity.substringAfter("/@")
+            }
+            val desc = cmr.optString("description", "").trim()
+            if (desc.isNotBlank()) description = desc
+
+            if (avatarUrl.isBlank()) {
+                avatarUrl = getBestThumbnailUrl(cmr.optJSONObject("avatar")?.optJSONArray("thumbnails"))
+            }
+        }
+
+        val micro = root.optJSONObject("microformat")?.optJSONObject("microformatDataRenderer")
+        if (micro != null) {
+            val microTitle = micro.optString("title", "").trim()
+            if (name.isBlank() || name == "Channel YouTube") {
+                if (microTitle.isNotBlank()) name = microTitle
+            }
+            if (description.isBlank()) {
+                description = micro.optString("description", "").trim()
+            }
+            if (avatarUrl.isBlank()) {
+                avatarUrl = getBestThumbnailUrl(micro.optJSONObject("thumbnail")?.optJSONArray("thumbnails"))
+            }
+        }
+
+        return fallback.copy(
+            channelName = name,
+            avatarUrl = avatarUrl,
+            bannerUrl = bannerUrl,
+            handle = handle,
+            subscriberCount = subCount,
+            videoCount = vidCount,
+            description = description
+        )
+    }
+
+    private fun getBestThumbnailUrl(arr: JSONArray?): String {
+        if (arr == null || arr.length() == 0) return ""
+        var best = ""
+        for (i in 0 until arr.length()) {
+            val u = arr.optJSONObject(i)?.optString("url", "") ?: ""
+            if (u.isNotBlank()) best = u
+        }
+        if (best.startsWith("//")) best = "https:$best"
+        return best
     }
 
     private fun buildWebContext(): JSONObject = JSONObject().apply {

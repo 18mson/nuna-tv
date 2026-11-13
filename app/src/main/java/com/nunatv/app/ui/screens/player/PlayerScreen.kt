@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
@@ -141,6 +143,8 @@ fun PlayerScreen(
     val isLiveStream = playbackState.isLiveStream
     val isShortStream = playbackState.isShortStream
     val isLoadingStream = playbackState.isLoadingStream
+    val isBuffering = playbackState.isBuffering
+    val bufferedPositionMs = playbackState.bufferedPositionMs
     val streamLoadError = playbackState.streamLoadError
     val audioBoostLevel = playbackState.audioBoostLevel
     val streamQualityOptions = playbackState.streamQualityOptions
@@ -461,6 +465,10 @@ fun PlayerScreen(
                 .focusable()
                 .pointerInput(isInPictureInPictureMode, isLoadingStream, streamLoadError) {
                     detectTapGestures {
+                        if (showTopMenu) {
+                            showTopMenu = false
+                            return@detectTapGestures
+                        }
                         if (!isInPictureInPictureMode && !isLoadingStream && streamLoadError == null) {
                             showControls = !showControls
                             interactionTick++
@@ -569,7 +577,7 @@ fun PlayerScreen(
                 ) {
                     if (isLoadingStream) {
                         CircularProgressIndicator(
-                            color = Color(0xFFE50914),
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 3.5.dp,
                             modifier = Modifier.size(46.dp)
                         )
@@ -606,17 +614,19 @@ fun PlayerScreen(
                         ) {
                             Button(
                                 onClick = onRetryStream,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier.dpadFocusable(
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = RoundedCornerShape(50),
                                     style = FocusStyle.CTA,
                                     onClick = onRetryStream
                                 )
                             ) {
                                 Text(
                                     text = "Coba Lagi",
-                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -636,6 +646,23 @@ fun PlayerScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // 1b. Indikator Buffering di tengah layar saat stream sedang buffering di tengah pemutaran
+        if (isBuffering && !isLoadingStream && streamLoadError == null && !isInPictureInPictureMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 3.5.dp,
+                    modifier = Modifier.size(40.dp)
+                )
             }
         }
 
@@ -760,110 +787,48 @@ fun PlayerScreen(
 
                         if (!isCompact) {
                             Spacer(modifier = Modifier.width(10.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                PlayerTopActionPill(
-                                    icon = Icons.Default.Tune,
-                                    label = if (isRemoteStream) "Channel / Resolusi" else "Channel",
-                                    containerColor = Color.White.copy(alpha = 0.12f),
-                                    onClick = {
-                                        showControls = false
-                                        showTopMenu = true
-                                    }
+                            if (isTv) {
+                                Text(
+                                    text = "Tekan ▲ untuk Menu & Pengaturan",
+                                    color = Color(0xFFBDBDBD),
+                                    fontSize = 12.sp,
+                                    maxLines = 1
                                 )
-                                if (onAudioBoostChange != null) {
-                                    val boostActive = audioBoostLevel != AudioBoostLevel.OFF
-                                    PlayerTopActionPill(
-                                        icon = Icons.AutoMirrored.Filled.VolumeUp,
-                                        label = if (!boostActive) "Boost: OFF" else "Boost: ${audioBoostLevel.shortLabel}",
-                                        containerColor = if (boostActive) Color(0xCC2A1416) else Color.White.copy(alpha = 0.12f),
-                                        isActive = boostActive,
-                                        onClick = {
-                                            onAudioBoostChange(audioBoostLevel.next())
-                                            interactionTick++
-                                        }
-                                    )
-                                }
-                                PlayerTopActionPill(
-                                    icon = Icons.Default.Autorenew,
-                                    label = if (isAutoplayEnabled) "Autoplay: ON" else "Autoplay: OFF",
-                                    containerColor = if (isAutoplayEnabled) Color(0xCC182B1B) else Color.White.copy(alpha = 0.12f),
-                                    isActive = isAutoplayEnabled,
-                                    activeColor = Color(0xFF66BB6A),
-                                    onClick = {
-                                        MediaPlaybackManager.setAutoplayEnabled(!isAutoplayEnabled)
-                                        interactionTick++
-                                    }
-                                )
-                                if (onTriggerDownload != null) {
-                                    PlayerTopActionPill(
-                                        icon = Icons.Default.Download,
-                                        label = "Download",
-                                        containerColor = Color.White.copy(alpha = 0.14f),
-                                        onClick = {
-                                            onTriggerDownload()
-                                            interactionTick++
-                                        }
-                                    )
-                                }
+                            } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PlayerTopActionPill(
+                            icon = Icons.Default.Settings,
+                            label = "Pengaturan",
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            onClick = {
+                                showControls = false
+                                showTopMenu = true
+                            }
+                        )
+                    }
                             }
                         }
                     }
 
-                    if (isCompact) {
-                        FlowRow(
+                    if (isCompact && !isTv) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .padding(start = 6.dp, top = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             PlayerTopActionPill(
-                                icon = Icons.Default.Tune,
-                                label = if (isRemoteStream) "Resolusi" else "Channel",
-                                containerColor = Color.White.copy(alpha = 0.12f),
+                                icon = Icons.Default.Settings,
+                                label = "Pengaturan",
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                 onClick = {
                                     showControls = false
                                     showTopMenu = true
                                 }
                             )
-                            if (onAudioBoostChange != null) {
-                                val boostActive = audioBoostLevel != AudioBoostLevel.OFF
-                                PlayerTopActionPill(
-                                    icon = Icons.AutoMirrored.Filled.VolumeUp,
-                                    label = if (!boostActive) "Boost" else "Boost ${audioBoostLevel.shortLabel}",
-                                    containerColor = if (boostActive) Color(0xCC2A1416) else Color.White.copy(alpha = 0.12f),
-                                    isActive = boostActive,
-                                    onClick = {
-                                        onAudioBoostChange(audioBoostLevel.next())
-                                        interactionTick++
-                                    }
-                                )
-                            }
-                            PlayerTopActionPill(
-                                icon = Icons.Default.Autorenew,
-                                label = if (isAutoplayEnabled) "Autoplay" else "Autoplay OFF",
-                                containerColor = if (isAutoplayEnabled) Color(0xCC182B1B) else Color.White.copy(alpha = 0.12f),
-                                isActive = isAutoplayEnabled,
-                                activeColor = Color(0xFF66BB6A),
-                                onClick = {
-                                    MediaPlaybackManager.setAutoplayEnabled(!isAutoplayEnabled)
-                                    interactionTick++
-                                }
-                            )
-                            if (onTriggerDownload != null) {
-                                PlayerTopActionPill(
-                                    icon = Icons.Default.Download,
-                                    label = "Download",
-                                    containerColor = Color.White.copy(alpha = 0.14f),
-                                    onClick = {
-                                        onTriggerDownload()
-                                        interactionTick++
-                                    }
-                                )
-                            }
                         }
                     }
                 }
@@ -927,7 +892,7 @@ fun PlayerScreen(
                             interactionTick++
                         },
                         shape = CircleShape,
-                        color = if (isTv) Color(0xFFE50914) else Color.Black.copy(alpha = 0.58f),
+                        color = if (isTv) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.58f),
                         border = if (isTv) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                         modifier = Modifier
                             .size(playBtnSize)
@@ -943,7 +908,7 @@ fun PlayerScreen(
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (isPlaying) "Pause" else "Play",
-                                tint = Color.White,
+                                tint = if (isTv) MaterialTheme.colorScheme.onPrimary else Color.White,
                                 modifier = Modifier.size(if (isCompact) 32.dp else 44.dp)
                             )
                         }
@@ -1010,7 +975,7 @@ fun PlayerScreen(
                     if (isLiveStream && durationMs <= 0L) {
                         LinearProgressIndicator(
                             progress = { 1f },
-                            color = Color(0xFFE50914),
+                            color = MaterialTheme.colorScheme.primary,
                             trackColor = Color.DarkGray,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1023,27 +988,48 @@ fun PlayerScreen(
                         val sliderPos = (if (isSeeking) seekPositionMs else currentPositionMs)
                             .toFloat()
                             .coerceIn(0f, maxRange)
-                        // Slider Seekbar Waktu
-                        Slider(
-                            value = sliderPos,
-                            onValueChange = {
-                                isSeeking = true
-                                seekPositionMs = it.toLong()
-                            },
-                            onValueChangeFinished = {
-                                MediaPlaybackManager.seekTo(seekPositionMs)
-                                isSeeking = false
-                            },
-                            valueRange = 0f..maxRange,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color(0xFFE50914),
-                                activeTrackColor = Color(0xFFE50914),
-                                inactiveTrackColor = Color.DarkGray
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusProperties { canFocus = false }
-                        )
+                        val bufferedFraction = (bufferedPositionMs.toFloat() / maxRange).coerceIn(0f, 1f)
+                        // Slider Seekbar Waktu dengan track buffer abu-abu di belakang progress aktif
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(Color.White.copy(alpha = 0.18f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(bufferedFraction)
+                                        .height(4.dp)
+                                        .background(Color.White.copy(alpha = 0.42f))
+                                )
+                            }
+                            Slider(
+                                value = sliderPos,
+                                onValueChange = {
+                                    isSeeking = true
+                                    seekPositionMs = it.toLong()
+                                },
+                                onValueChangeFinished = {
+                                    MediaPlaybackManager.seekTo(seekPositionMs)
+                                    isSeeking = false
+                                },
+                                valueRange = 0f..maxRange,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = Color.Transparent
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusProperties { canFocus = false }
+                            )
+                        }
                     }
 
                     Row(
@@ -1054,11 +1040,11 @@ fun PlayerScreen(
                         if (isLiveStream) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFFE50914)
+                                color = MaterialTheme.colorScheme.primary
                             ) {
                                 Text(
                                     text = "LIVE",
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onPrimary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -1133,7 +1119,7 @@ fun PlayerScreen(
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xCC181818),
-                border = BorderStroke(1.dp, Color(0xFFE50914))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
             ) {
                 Text(
                     text = longPressHint ?: "",
@@ -1229,7 +1215,7 @@ fun PlayerScreen(
                                             onVideoChange(targetNext)
                                         },
                                         shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFFE50914),
+                                        color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier
                                             .weight(1f)
                                             .heightIn(min = 42.dp)
@@ -1246,7 +1232,7 @@ fun PlayerScreen(
                                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
                                             Text(
                                                 text = "Putar",
-                                                color = Color.White,
+                                                color = MaterialTheme.colorScheme.onPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 maxLines = 1,
@@ -1338,7 +1324,7 @@ fun PlayerScreen(
                                                 onVideoChange(targetNext)
                                             },
                                             shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFFE50914),
+                                            color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier
                                                 .focusRequester(autoplayFocusRequester)
                                                 .dpadFocusable(
@@ -1352,7 +1338,7 @@ fun PlayerScreen(
                                         ) {
                                             Text(
                                                 text = "Putar",
-                                                color = Color.White,
+                                                color = MaterialTheme.colorScheme.onPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 maxLines = 1,
@@ -1398,7 +1384,7 @@ fun PlayerScreen(
                                     .fillMaxWidth()
                                     .height(3.dp)
                                     .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp)),
-                                color = Color(0xFFE50914),
+                                color = MaterialTheme.colorScheme.primary,
                                 trackColor = Color(0xFF2A2A2A)
                             )
                         }
@@ -1445,7 +1431,7 @@ fun PlayerScreen(
                             Icon(
                                 imageVector = Icons.Default.VideoLibrary,
                                 contentDescription = null,
-                                tint = Color(0xFFE50914),
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -1583,6 +1569,20 @@ fun PlayerScreen(
             }
         }
 
+        // 4b. Scrim penutup menu atas khusus mode HP: tap di mana saja di area layar/video akan menutup menu
+        if (showTopMenu && !isTv && !isInPictureInPictureMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            showTopMenu = false
+                        }
+                    }
+            )
+        }
+
         // 5. Menu Atas Pemutar Video (D-Pad UP): Ke Channel Utama & Ganti Resolusi (khusus stream online)
         AnimatedVisibility(
             visible = showTopMenu && !isInPictureInPictureMode && !isLoadingStream,
@@ -1604,9 +1604,8 @@ fun PlayerScreen(
             }
 
             Surface(
-                color = Color(0xEE141414),
-                shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-                border = BorderStroke(1.dp, Color(0xFF2E2E2E)),
+                color = Color(0xF2161616),
+                shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusGroup()
@@ -1647,63 +1646,60 @@ fun PlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { isChannelFocused = it.hasFocus }
+                                .focusGroup()
                         ) {
-                            Surface(
-                                onClick = {
-                                    showTopMenu = false
-                                    MediaPlaybackManager.stopAndClear(context)
-                                    onOpenChannel?.invoke(activeChannelId, currentVideo.author, currentVideo.videoId)
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFF262626),
-                                border = BorderStroke(1.dp, Color(0xFF3E3E3E)),
-                                modifier = Modifier
-                                    .focusRequester(topMenuChannelFocusRequester)
-                                    .onFocusChanged { isChannelFocused = it.isFocused }
-                                    .dpadFocusable(
-                                        shape = RoundedCornerShape(10.dp),
-                                        style = FocusStyle.PILL,
-                                        onClick = {
-                                            showTopMenu = false
-                                            MediaPlaybackManager.stopAndClear(context)
-                                            onOpenChannel?.invoke(activeChannelId, currentVideo.author, currentVideo.videoId)
-                                        }
-                                    )
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AccountCircle,
-                                        contentDescription = null,
-                                        tint = Color(0xFFE50914),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = "Ke Channel Utama",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
+                            item {
+                                Surface(
+                                    onClick = {
+                                        showTopMenu = false
+                                        MediaPlaybackManager.stopAndClear(context)
+                                        onOpenChannel?.invoke(activeChannelId, currentVideo.author, currentVideo.videoId)
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .focusRequester(topMenuChannelFocusRequester)
+                                        .dpadFocusable(
+                                            shape = RoundedCornerShape(50),
+                                            style = FocusStyle.PILL,
+                                            onClick = {
+                                                showTopMenu = false
+                                                MediaPlaybackManager.stopAndClear(context)
+                                                onOpenChannel?.invoke(activeChannelId, currentVideo.author, currentVideo.videoId)
+                                            }
                                         )
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountCircle,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = currentVideo.author.ifBlank { "Pemilik Video YouTube" },
-                                            color = Color.LightGray,
-                                            fontSize = 11.sp,
+                                            text = currentVideo.author.ifBlank { "Ke Channel Utama" },
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -1711,106 +1707,159 @@ fun PlayerScreen(
                                 }
                             }
 
-                            if (!isTv) {
-                                IconButton(
-                                    onClick = { showTopMenu = false },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Tutup Menu",
-                                        tint = Color.LightGray
+                            if (onAudioBoostChange != null) {
+                                item {
+                                    val boostActive = audioBoostLevel != AudioBoostLevel.OFF
+                                    PlayerTopActionPill(
+                                        icon = Icons.AutoMirrored.Filled.VolumeUp,
+                                        label = if (!boostActive) "Boost: OFF" else "Boost: ${audioBoostLevel.shortLabel}",
+                                        containerColor = if (boostActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        isActive = boostActive,
+                                        activeColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        onClick = {
+                                            onAudioBoostChange(audioBoostLevel.next())
+                                        }
                                     )
+                                }
+                            }
+
+                            item {
+                                val autoPlayActive = isAutoplayEnabled
+                                PlayerTopActionPill(
+                                    icon = Icons.Default.Autorenew,
+                                    label = if (isAutoplayEnabled) "Autoplay: ON" else "Autoplay: OFF",
+                                    containerColor = if (isAutoplayEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    isActive = autoPlayActive,
+                                    activeColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    onClick = {
+                                        MediaPlaybackManager.setAutoplayEnabled(!isAutoplayEnabled)
+                                    }
+                                )
+                            }
+
+                            if (onTriggerDownload != null) {
+                                item {
+                                    PlayerTopActionPill(
+                                        icon = Icons.Default.Download,
+                                        label = "Download",
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        onClick = {
+                                            showTopMenu = false
+                                            onTriggerDownload()
+                                        }
+                                    )
+                                }
+                            }
+
+                            if (!isTv) {
+                                item {
+                                    IconButton(
+                                        onClick = { showTopMenu = false },
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Tutup Menu",
+                                            tint = Color.LightGray,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
 
                         if (isTv) {
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = "Tekan Bawah untuk kembali ke video",
                                 color = Color.Gray,
-                                fontSize = 12.sp
+                                fontSize = 11.sp
                             )
                         }
                     }
 
                     // Opsi Ganti Resolusi Video hanya untuk stream YouTube online (video offline sesuai file unduhan)
                     if (hasQualityOptions) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 text = "Resolusi Video (Sedang diputar: $activeResLabel)",
-                                color = Color.LightGray,
-                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
 
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusGroup()
+                            // Material 3 Expressive Segmented Capsule Bar (Pill Toolbar)
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                modifier = Modifier.wrapContentWidth()
                             ) {
-                                itemsIndexed(streamQualityOptions) { index, option ->
-                                    val isCurrentRes = activeStreamQuality?.height == option.height ||
-                                        (activeStreamQuality == null && activeResLabel.startsWith(option.label))
-                                    val isFirstOrCurrent = (activeStreamQuality?.height == option.height) ||
-                                        (activeStreamQuality == null && index == 0)
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .padding(3.dp)
+                                        .focusGroup()
+                                ) {
+                                    itemsIndexed(streamQualityOptions) { index, option ->
+                                        val isCurrentRes = activeStreamQuality?.height == option.height ||
+                                            (activeStreamQuality == null && activeResLabel.startsWith(option.label))
+                                        val isFirstOrCurrent = (activeStreamQuality?.height == option.height) ||
+                                            (activeStreamQuality == null && index == 0)
 
-                                    Surface(
-                                        onClick = {
-                                            if (!isCurrentRes) {
-                                                onSelectStreamQuality?.invoke(option)
-                                            }
-                                            showTopMenu = false
-                                        },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isCurrentRes) Color(0xFFE50914) else Color(0xFF262626),
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (isCurrentRes) Color(0xFFE50914) else Color(0xFF3E3E3E)
-                                        ),
-                                        modifier = Modifier
-                                            .then(
-                                                if (isFirstOrCurrent) Modifier.focusRequester(topMenuQualityFocusRequester)
-                                                else Modifier
-                                            )
-                                            .onFocusChanged { focusState ->
-                                                if (focusState.isFocused) {
-                                                    isQualityFocused = true
-                                                } else if (!focusState.hasFocus) {
-                                                    isQualityFocused = false
+                                        Surface(
+                                            onClick = {
+                                                if (!isCurrentRes) {
+                                                    onSelectStreamQuality?.invoke(option)
                                                 }
-                                            }
-                                            .dpadFocusable(
-                                                shape = RoundedCornerShape(10.dp),
-                                                style = FocusStyle.PILL,
-                                                onClick = {
-                                                    if (!isCurrentRes) {
-                                                        onSelectStreamQuality?.invoke(option)
-                                                    }
-                                                    showTopMenu = false
-                                                }
-                                            )
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                        ) {
-                                            if (isCurrentRes) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(15.dp)
+                                                showTopMenu = false
+                                            },
+                                            shape = RoundedCornerShape(50),
+                                            color = if (isCurrentRes) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            contentColor = if (isCurrentRes) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .then(
+                                                    if (isFirstOrCurrent) Modifier.focusRequester(topMenuQualityFocusRequester)
+                                                    else Modifier
                                                 )
-                                                Spacer(modifier = Modifier.width(5.dp))
+                                                .onFocusChanged { focusState ->
+                                                    if (focusState.isFocused) {
+                                                        isQualityFocused = true
+                                                    } else if (!focusState.hasFocus) {
+                                                        isQualityFocused = false
+                                                    }
+                                                }
+                                                .dpadFocusable(
+                                                    shape = RoundedCornerShape(50),
+                                                    style = FocusStyle.PILL,
+                                                    onClick = {
+                                                        if (!isCurrentRes) {
+                                                            onSelectStreamQuality?.invoke(option)
+                                                        }
+                                                        showTopMenu = false
+                                                    }
+                                                )
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                                            ) {
+                                                if (isCurrentRes) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                Text(
+                                                    text = if (isCurrentRes) "${option.label} • Aktif" else option.label,
+                                                    color = if (isCurrentRes) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.85f),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isCurrentRes) FontWeight.Bold else FontWeight.Medium
+                                                )
                                             }
-                                            Text(
-                                                text = if (isCurrentRes) "${option.label} • Aktif" else option.label,
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                fontWeight = if (isCurrentRes) FontWeight.Bold else FontWeight.Medium
-                                            )
                                         }
                                     }
                                 }
@@ -1830,33 +1879,29 @@ private fun PlayerTopActionPill(
     containerColor: Color,
     onClick: () -> Unit,
     isActive: Boolean = false,
-    activeColor: Color = Color(0xFFE50914)
+    activeColor: Color = MaterialTheme.colorScheme.primary
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(50),
         color = containerColor,
-        border = BorderStroke(
-            1.dp,
-            if (isActive) activeColor.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.12f)
-        ),
         modifier = Modifier
-            .heightIn(min = 36.dp)
+            .height(36.dp)
             .dpadFocusable(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(50),
                 style = FocusStyle.PILL,
                 onClick = onClick
             )
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isActive) activeColor else Color.White,
-                modifier = Modifier.size(15.dp)
+                modifier = Modifier.size(14.dp)
             )
             Spacer(modifier = Modifier.width(5.dp))
             Text(

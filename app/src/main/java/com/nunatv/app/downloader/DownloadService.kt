@@ -38,7 +38,7 @@ class DownloadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val videoUrl = intent?.getStringExtra(EXTRA_URL)
-        val resolutionName = intent?.getStringExtra(EXTRA_RESOLUTION) ?: VideoResolution.RES_1080P.name
+        val resolutionName = intent?.getStringExtra(EXTRA_RESOLUTION) ?: VideoResolution.HIGH.name
         val destDirPath = intent?.getStringExtra(EXTRA_DEST_DIR)
 
         if (videoUrl.isNullOrEmpty()) {

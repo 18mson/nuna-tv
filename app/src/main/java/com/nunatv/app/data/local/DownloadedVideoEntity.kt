@@ -29,4 +29,16 @@ data class DownloadedVideoEntity(
     val playCount: Int = 0,
     val lastPlayedTimestamp: Long = 0L,
     val category: String = "Umum"
-)
+) {
+    fun categoriesList(): List<String> {
+        return category.split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .ifEmpty { listOf("Umum") }
+    }
+
+    fun isIn(targetCategory: String): Boolean {
+        if (targetCategory.equals("Semua", ignoreCase = true)) return true
+        return categoriesList().any { it.equals(targetCategory, ignoreCase = true) }
+    }
+}

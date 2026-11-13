@@ -25,33 +25,43 @@ Catatan build: APK pada rilis ini ditandatangani dengan `signingConfigs.getByNam
 
 ## Fitur Utama
 
-### Beranda Video Offline (Pustaka Offline)
-- Menyimpan daftar video yang sudah diunduh di database Room lengkap dengan kategori kustom, pencarian cepat, banner acak, serta informasi sisa ruang penyimpanan.
-- Deteksi kategori otomatis saat video diunduh berdasarkan kategori YouTube, tag, judul, dan nama channel, ditambah tombol **Deteksi Otomatis Video 'Umum'** untuk merapikan koleksi lama.
-- Kartu unduhan langsung tampil instan di Home sejak progres `0%` (dengan skeleton loading sebelum metadata selesai diambil) serta menampilkan overlay progres setengah gelap sesuai persentase unduhan.
-- Pada mode TV, tahan tombol `OK` selama 650 ms atau tekan tombol `Menu`, `Info`, `Delete`, atau `Merah` di kartu video untuk membuka dialog aksi. Pada versi ponsel tersedia tombol menu di setiap kartu.
+### Beranda Video Offline (Pustaka Offline) & Multi-Kategori
+- **Dukungan Multi-Kategori per Video**: Satu video dapat dimasukkan ke dalam beberapa kategori sekaligus dengan dialog pilihan checklist multi-select yang praktis.
+- **Pemutaran Kategori Instan (Play & Shuffle)**: Di samping nama setiap kategori, tersedia tombol **Putar (Play A-Z)** untuk memutar seluruh video urut abjad, serta tombol **Acak (Shuffle)** untuk langsung memutar video secara acak.
+- **Deteksi Kategori Otomatis**: Mendeteksi kategori secara cerdas saat video diunduh berdasarkan kategori YouTube resmi, tag, judul, dan nama channel, dilengkapi tombol otomatisasi untuk merapikan kategori lama.
+- **Kartu Unduhan Realtime**: Video langsung tampil di Beranda sejak `0%` dengan skeleton loading dan overlay progres setengah transparan sesuai kemajuan unduhan.
+- **Navigasi TV & Ponsel**: Tahan tombol `OK` (650 ms) atau tekan tombol `Menu`, `Info`, `Delete`, atau `Merah` pada remote TV untuk membuka dialog aksi kartu; pada versi ponsel tersedia tombol menu di setiap kartu.
 
-### Tab YouTube Tanpa WebView & Shorts
-- Menampilkan beranda feed adaptif dengan persistensi state dan posisi scroll saat berpindah tab maupun kembali dari pemutar video.
-- Mendukung **YouTube Shorts** lewat rak khusus di Beranda, tab/grid vertikal 9:16, serta gestur swipe atas/bawah di pemutar untuk berpindah antar Shorts.
-- Header mobile dirancang ringkas dengan satu baris pencarian, tombol Filter & Riwayat (bottom sheet), tombol tempel tautan (`watch`, `youtu.be`, `shorts`, `live`, `embed`), serta gestur tarik untuk menyegarkan (`PullToRefresh`).
-- Pencarian di TV memakai dialog keyboard QWERTY di layar beserta saran ketikan otomatis.
+### Tab YouTube, Halaman Channel & Shorts
+- **Jelajah Channel YouTube Lengkap**: Halaman channel menampilkan banner resmi, avatar foto profil, nama channel, handle (`@...`), deskripsi, serta kolom pencarian khusus di dalam channel (*"Cari di channel ini..."*) dan tab filter (*"Semua"*, *"Populer"*).
+- **Beranda & Feed Adaptif**: State dan posisi scroll tersimpan persisten saat berpindah tab maupun kembali dari pemutar video.
+- **YouTube Shorts**: Rak khusus Shorts di Beranda, tab/grid vertikal 9:16, serta gestur swipe atas/bawah di pemutar untuk berpindah video secara mulus.
+- **Header Mobile & Input TV**: Pencarian mobile satu baris ringkas dengan bottom sheet Filter & Riwayat, tombol tempel tautan instan, dan gestur tarik untuk menyegarkan (*Pull-to-Refresh*). Di TV tersedia popup keyboard virtual QWERTY dengan sudut melengkung yang konsisten.
 
 ### Pemutar Video, Background Audio, PiP & Mini Player
-- Dibangun dengan Media3 ExoPlayer (termasuk dukungan HLS/DASH untuk siaran **Live** dan `MergingMediaSource`), dengan jalur cepat Innertube `/youtubei/v1/player` serta prefetch video berikutnya agar pembukaan video lebih cepat.
-- **Pemutaran Latar Belakang** melalui `MediaPlaybackService` dan notifikasi `MediaStyle` (bawaan nonaktif, dapat diaktifkan lewat menu **Settings**).
-- **Jendela Popup / Picture-in-Picture (PiP)** untuk ponsel (bawaan nonaktif, dapat diaktifkan lewat menu **Settings**; bila pemutaran latar belakang mati maka menutup jendela PiP menghentikan pemutaran, sedangkan bila pemutaran latar belakang aktif maka suara tetap berjalan hingga dihentikan dari kontrol notifikasi).
-- **Mini Player** dalam aplikasi (`MiniPlayerBar`) di atas bilah navigasi bawah saat player diperkecil.
-- Kontrol remote D-Pad di TV (`OK`, kiri/kanan singkat +/-10 detik, tahan kiri/kanan pindah video, bawah rekomendasi, atas menu channel & resolusi) serta tombol **Download** langsung di bar atas pemutar.
-- Penguat suara (`Audio Boost`) memanfaatkan `LoudnessEnhancer` Android (`Normal`, `+6 dB`, `+12 dB`, `+18 dB`) dan panduan pengguna 3 langkah yang dapat dibuka ulang dari **Settings**.
+- **ExoPlayer Berkecepatan Tinggi**: Jalur cepat Innertube `/youtubei/v1/player` tanpa overhead Python untuk memulai video instan, prefetch video berikutnya di latar belakang, dan dukungan siaran langsung **Live (HLS/DASH)**.
+- **Penyimpanan Posisi Tonton Terakhir (`PlaybackPositionStore`)**: Melanjutkan pemutaran video secara otomatis dari posisi terakhir saat video dibuka kembali.
+- **Pemutaran Latar Belakang (Background Audio)**: Berjalan melalui `MediaPlaybackService` dan notifikasi `MediaStyle` (opsional, dapat diaktifkan di Settings).
+- **Jendela Popup / Picture-in-Picture (PiP)**: Mendukung mode PiP di ponsel dengan integrasi kontrol pemutaran audio di latar belakang.
+- **Mini Player**: `MiniPlayerBar` interaktif di atas bilah navigasi bawah saat pemutar diperkecil.
+- **Menu Pengaturan Pemutar Bersih**: Menu atas (`DPAD_UP` di TV atau ikon Pengaturan di HP) menyediakan akses ke channel utama, audio boost (`LoudnessEnhancer` hingga +18 dB), autoplay, resolusi online, dan tombol unduh. Pada mode ponsel, menu otomatis tertutup saat layar di luar menu disentuh.
 
-### Pengunduhan & Tata Letak Adaptif
-- Unduhan berjalan di latar belakang melalui Foreground Service (`DownloadService`) menggunakan `youtubedl-android` dan FFmpeg, dengan pemeriksaan sisa penyimpanan sebelum unduhan dimulai, pembersihan otomatis bila gagal, dan pembersihan notifikasi progres saat selesai.
-- Navigasi menggunakan sidebar di Android TV atau mode layar horizontal serta bilah navigasi bawah ramping pada ponsel mode portrait.
+### Pengaturan Resolusi Unduhan & Personalisasi Tema
+- **Tingkatan Resolusi Unduhan Adaptif**:
+  - **Tinggi**: 1080p - 2K (memilih kualitas terbaik yang tersedia).
+  - **Sedang**: 720p - 480p (keseimbangan kualitas dan ukuran).
+  - **Rendah**: 360p - 240p (hemat kuota dan memori).
+  - **Audio Saja**: mengekstrak format audio terbaik (M4A/MP3).
+- **Hidden Setting (Easter Egg)**: Ketuk 5x pada opsi resolusi unduhan untuk beralih antara tingkatan adaptif dan rincian angka resolusi manual (1080p, 720p, 480p, 360p, 240p, Audio), dan ketuk 5x lagi untuk kembali.
+- **Material 3 Expressive & Tema Warna**:
+  - Pilihan tema warna dinamis (**Ungu**, **Merah**, **Biru**, **Coklat**) yang diterapkan seragam ke seluruh komponen aplikasi.
+  - Mode Gelap (*Dark Mode*) dan Terang (*Light Mode*).
+  - Floating pill navigation bar modern untuk ponsel portrait.
+  - Bebas dari border line kasar untuk tampilan yang lebih halus dan modern.
 
 ## Teknologi yang Digunakan
 
-- Bahasa & UI: Kotlin `2.0.21`, Jetpack Compose BOM `2024.10.01`, Material 3, Compose for TV `1.0.0`, minSdk `24`, targetSdk `35`
+- Bahasa & UI: Kotlin `2.0.21`, Jetpack Compose BOM `2024.10.01`, Material 3 Expressive, Compose for TV `1.0.0`, minSdk `24`, targetSdk `35`
 - Pemutar media: AndroidX Media3 ExoPlayer, HLS, DASH & UI `1.5.0`, serta AndroidX Media Compat `1.7.0`
 - Penyimpanan & preferensi: Room `2.6.1` (KSP) dan DataStore Preferences `1.1.1`
 - Ekstraktor & pengunduh video: `youtubedl-android` & FFmpeg `0.17.4`
@@ -83,4 +93,3 @@ Nuna TV berjalan dengan dukungan berbagai proyek sumber terbuka berikut:
 ## Lisensi
 
 Proyek ini dirilis di bawah lisensi MIT. Lihat berkas [`LICENSE`](LICENSE) untuk ketentuan lengkap.
-

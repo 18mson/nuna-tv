@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.MoreVert
@@ -57,6 +58,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -101,6 +103,7 @@ import java.util.Random
 fun HomeScreen(
     viewModel: HomeViewModel,
     onPlayVideo: (video: DownloadedVideoEntity) -> Unit,
+    onPlayPlaylist: ((playlist: List<DownloadedVideoEntity>, startIndex: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -133,6 +136,24 @@ fun HomeScreen(
         completedVideos.shuffled(rand)
     }
 
+    val playPlaylistAction: (List<DownloadedVideoEntity>, Boolean) -> Unit = { targetVideos, isRandom ->
+        val completedOnly = targetVideos.filter { it.status == DownloadStatus.COMPLETED && it.localFilePath.isNotEmpty() }
+        if (completedOnly.isNotEmpty()) {
+            val finalQueue = if (isRandom) {
+                completedOnly.shuffled()
+            } else {
+                completedOnly.sortedBy { it.title.lowercase() }
+            }
+            val firstVideo = finalQueue.first()
+            viewModel.recordPlay(firstVideo)
+            if (onPlayPlaylist != null) {
+                onPlayPlaylist(finalQueue, 0)
+            } else {
+                onPlayVideo(firstVideo)
+            }
+        }
+    }
+
     // Banner video acak dinamis yang berganti berdasarkan randomSeed
     val heroVideo = remember(completedVideos, randomSeed) {
         if (completedVideos.isNotEmpty()) {
@@ -144,7 +165,7 @@ fun HomeScreen(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0F0F0F))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         val isCompactMobile = !isTv && maxWidth < 600.dp
         val isMediumWidth = !isTv && maxWidth >= 600.dp && maxWidth < 900.dp
@@ -154,7 +175,7 @@ fun HomeScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF141414))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
                     .padding(
                         start = if (isCompactMobile) 12.dp else 16.dp,
                         end = if (isCompactMobile) 8.dp else 16.dp,
@@ -167,47 +188,47 @@ fun HomeScreen(
                 Icon(
                     imageVector = Icons.Default.DownloadDone,
                     contentDescription = null,
-                    tint = Color(0xFFE50914),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
                     text = "Pustaka Offline",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                CompactStorageBar(
+                    storageInfo = storageInfo,
+                    compactHeader = true
                 )
                 if (isCompactMobile) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "Sisa ${StorageUtils.formatFileSize(storageInfo.availableBytes)}",
-                        color = Color(0xFFAAAAAA),
-                        fontSize = 12.sp,
-                        maxLines = 1
-                    )
                     IconButton(
                         onClick = { showAddCategoryDialog = true },
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Kelola Kategori",
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                } else {
-                    Text(
-                        text = "Video tersimpan di perangkat (bisa diputar tanpa internet)",
-                        color = Color.Gray,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
                 }
             }
 
             // Baris Kategori Filter Chips
+            val visibleCustomCategories = remember(customCategories, videos, isTv) {
+                if (isTv) {
+                    customCategories.filter { cat ->
+                        videos.any { it.category.equals(cat, ignoreCase = true) }
+                    }
+                } else {
+                    customCategories.toList()
+                }
+            }
             LazyRow(
                 contentPadding = PaddingValues(
                     horizontal = if (isCompactMobile) 12.dp else 16.dp,
@@ -216,12 +237,12 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF141414))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
             ) {
                 val defaultFilters = listOf(
                     "Semua" to "Semua",
-                    "Terakhir Ditambahkan" to if (isCompactMobile) "Terbaru" else "Terakhir Ditambahkan",
-                    "Paling Sering Diputar" to if (isCompactMobile) "Sering Diputar" else "Paling Sering Diputar",
+                    "Terakhir Ditambahkan" to if (isCompactMobile || isTv) "Terbaru" else "Terakhir Ditambahkan",
+                    "Paling Sering Diputar" to if (isCompactMobile || isTv) "Sering Diputar" else "Paling Sering Diputar",
                     "Acak" to "Acak"
                 )
                 items(items = defaultFilters) { (filterKey, displayLabel) ->
@@ -232,8 +253,8 @@ fun HomeScreen(
                     )
                 }
 
-                // Kategori Kustom User
-                items(items = customCategories.toList()) { categoryName ->
+                // Kategori Kustom User (di TV hanya tampilkan kategori yang ada videonya agar ringkas)
+                items(items = visibleCustomCategories) { categoryName ->
                     TvChip(
                         label = categoryName,
                         selected = selectedCategory == categoryName,
@@ -253,25 +274,6 @@ fun HomeScreen(
                         )
                     }
                 }
-            }
-
-            // Bar status penyimpanan tetap di atas hanya pada layar lebar/TV (di mobile ikut scroll)
-            if (!isCompactMobile) {
-                CompactStorageBar(
-                    storageInfo = storageInfo,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
-
-            if (isTv && videos.isNotEmpty()) {
-                Text(
-                    text = "Tips Remote: Tahan tombol OK atau tekan Menu pada kartu video untuk Hapus / Ubah Kategori",
-                    color = Color.Gray,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-                )
             }
 
             if (videos.isEmpty()) {
@@ -313,17 +315,6 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(if (isCompactMobile) 14.dp else 20.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            if (isCompactMobile) {
-                                item {
-                                    CompactStorageBar(
-                                        storageInfo = storageInfo,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-                                    )
-                                }
-                            }
-
                             // 1. Hero Spotlight Banner Video
                             if (heroVideo != null) {
                                 item {
@@ -341,15 +332,18 @@ fun HomeScreen(
 
                             // 2. Section: Terakhir Ditambahkan
                             item {
+                                val latestVideos = videos.sortedByDescending { it.downloadTimestamp }
                                 HomeSectionRow(
                                     title = "Terakhir Ditambahkan",
-                                    videos = videos.sortedByDescending { it.downloadTimestamp },
+                                    videos = latestVideos,
                                     isTv = isTv,
                                     compact = isCompactMobile,
                                     onPlayVideo = { video ->
                                         viewModel.recordPlay(video)
                                         onPlayVideo(video)
                                     },
+                                    onPlayAll = { playPlaylistAction(latestVideos, false) },
+                                    onPlayRandom = { playPlaylistAction(latestVideos, true) },
                                     onOpenOptions = { videoForOptions = it },
                                     onEditCategory = { videoToEditCategory = it },
                                     onDelete = { videoToDelete = it }
@@ -368,6 +362,8 @@ fun HomeScreen(
                                             viewModel.recordPlay(video)
                                             onPlayVideo(video)
                                         },
+                                        onPlayAll = { playPlaylistAction(mostPlayed, false) },
+                                        onPlayRandom = { playPlaylistAction(mostPlayed, true) },
                                         onOpenOptions = { videoForOptions = it },
                                         onEditCategory = { videoToEditCategory = it },
                                         onDelete = { videoToDelete = it }
@@ -387,6 +383,8 @@ fun HomeScreen(
                                             viewModel.recordPlay(video)
                                             onPlayVideo(video)
                                         },
+                                        onPlayAll = { playPlaylistAction(randomList, false) },
+                                        onPlayRandom = { playPlaylistAction(randomList, true) },
                                         onOpenOptions = { videoForOptions = it },
                                         onEditCategory = { videoToEditCategory = it },
                                         onDelete = { videoToDelete = it }
@@ -396,7 +394,7 @@ fun HomeScreen(
 
                             // 5. Sections per Kategori Kustom
                             customCategories.forEach { cat ->
-                                val categoryVideos = completedVideos.filter { it.category.equals(cat, ignoreCase = true) }
+                                val categoryVideos = completedVideos.filter { it.isIn(cat) }
                                 if (categoryVideos.isNotEmpty()) {
                                     item {
                                         HomeSectionRow(
@@ -408,6 +406,8 @@ fun HomeScreen(
                                                 viewModel.recordPlay(video)
                                                 onPlayVideo(video)
                                             },
+                                            onPlayAll = { playPlaylistAction(categoryVideos, false) },
+                                            onPlayRandom = { playPlaylistAction(categoryVideos, true) },
                                             onOpenOptions = { videoForOptions = it },
                                             onEditCategory = { videoToEditCategory = it },
                                             onDelete = { videoToDelete = it }
@@ -423,7 +423,7 @@ fun HomeScreen(
                                 "Terakhir Ditambahkan" -> videos.sortedByDescending { it.downloadTimestamp }
                                 "Paling Sering Diputar" -> mostPlayed
                                 "Acak" -> randomList
-                                else -> videos.filter { it.category.equals(selectedCategory, ignoreCase = true) }
+                                else -> videos.filter { it.isIn(selectedCategory) }
                             }
                         }
 
@@ -447,35 +447,100 @@ fun HomeScreen(
                                 else -> GridCells.Adaptive(minSize = 260.dp)
                             }
                             val pad = if (isCompactMobile) 12.dp else if (isMediumWidth) 14.dp else 16.dp
-                            LazyVerticalGrid(
-                                columns = gridColumns,
-                                contentPadding = PaddingValues(pad),
-                                horizontalArrangement = Arrangement.spacedBy(pad),
-                                verticalArrangement = Arrangement.spacedBy(pad),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                if (isCompactMobile) {
-                                    item(span = { GridItemSpan(maxLineSpan) }) {
-                                        CompactStorageBar(
-                                            storageInfo = storageInfo,
-                                            modifier = Modifier.fillMaxWidth()
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = pad, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = selectedCategory,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        fontSize = if (isCompactMobile) 17.sp else 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    // Play berurutan abjad
+                                    Surface(
+                                        onClick = { playPlaylistAction(filteredList, false) },
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .dpadFocusable(
+                                                shape = CircleShape,
+                                                style = FocusStyle.CTA,
+                                                onClick = { playPlaylistAction(filteredList, false) }
+                                            )
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Putar Berurutan Sesuai Abjad",
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Play acak
+                                    Surface(
+                                        onClick = { playPlaylistAction(filteredList, true) },
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .dpadFocusable(
+                                                shape = CircleShape,
+                                                style = FocusStyle.CTA,
+                                                onClick = { playPlaylistAction(filteredList, true) }
+                                            )
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.Shuffle,
+                                                contentDescription = "Putar Acak (Random)",
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
+
+                                    Text(
+                                        text = "${filteredList.size} video",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                LazyVerticalGrid(
+                                    columns = gridColumns,
+                                    contentPadding = PaddingValues(pad),
+                                    horizontalArrangement = Arrangement.spacedBy(pad),
+                                    verticalArrangement = Arrangement.spacedBy(pad),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    items(items = filteredList, key = { it.id }) { video: DownloadedVideoEntity ->
+                                        HomeVideoCard(
+                                            video = video,
+                                            isTv = isTv,
+                                            onClick = {
+                                                if (video.status == DownloadStatus.COMPLETED && video.localFilePath.isNotEmpty()) {
+                                                    viewModel.recordPlay(video)
+                                                    onPlayVideo(video)
+                                                }
+                                            },
+                                            onOpenOptions = { videoForOptions = video },
+                                            onEditCategory = { videoToEditCategory = video },
+                                            onDelete = { videoToDelete = video }
                                         )
                                     }
-                                }
-                                items(items = filteredList, key = { it.id }) { video: DownloadedVideoEntity ->
-                                    HomeVideoCard(
-                                        video = video,
-                                        isTv = isTv,
-                                        onClick = {
-                                            if (video.status == DownloadStatus.COMPLETED && video.localFilePath.isNotEmpty()) {
-                                                viewModel.recordPlay(video)
-                                                onPlayVideo(video)
-                                            }
-                                        },
-                                        onOpenOptions = { videoForOptions = video },
-                                        onEditCategory = { videoToEditCategory = video },
-                                        onDelete = { videoToDelete = video }
-                                    )
                                 }
                             }
                         }
@@ -499,10 +564,10 @@ fun HomeScreen(
                         label = { Text("Nama Kategori Baru (misal: Anime, Musik, Vlog)") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFFE50914),
-                            unfocusedBorderColor = Color.Gray
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -519,10 +584,10 @@ fun HomeScreen(
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Deteksi Otomatis Video 'Umum'", color = Color.White, fontSize = 13.sp)
+                        Text("Deteksi Otomatis Video 'Umum'", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                     }
                 }
             },
@@ -534,17 +599,20 @@ fun HomeScreen(
                             showAddCategoryDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914))
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 ) {
                     Text("Simpan")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text("Batal", color = Color.LightGray)
+                    Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = Color(0xFF1E1E1E)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -608,8 +676,11 @@ fun HomeScreen(
                                 viewModel.recordPlay(targetVideo)
                                 onPlayVideo(targetVideo)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(firstOptionFocus)
@@ -699,8 +770,12 @@ fun HomeScreen(
         )
     }
 
-    // Dialog Ganti Kategori Video
+    // Dialog Ganti Kategori Video (Mendukung multi-kategori)
     videoToEditCategory?.let { targetVideo ->
+        var selectedCats by remember(targetVideo.id) {
+            mutableStateOf(targetVideo.categoriesList().toSet())
+        }
+
         AlertDialog(
             onDismissRequest = { videoToEditCategory = null },
             title = { Text("Atur Kategori Video", color = Color.White) },
@@ -713,40 +788,85 @@ fun HomeScreen(
                         color = Color.Gray,
                         fontSize = 12.sp
                     )
+                    Text(
+                        text = "Pilih satu atau beberapa kategori untuk video ini:",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
                     Spacer(modifier = Modifier.height(4.dp))
                     customCategories.forEach { categoryName ->
-                        val isCurrent = targetVideo.category == categoryName
+                        val isChecked = selectedCats.contains(categoryName)
                         Card(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isCurrent) Color(0xFFE50914) else Color(0xFF2A2A2A)
+                                containerColor = if (isChecked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .dpadFocusable(
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     style = FocusStyle.PILL,
                                     onClick = {
-                                        viewModel.updateVideoCategory(targetVideo, categoryName)
-                                        videoToEditCategory = null
+                                        selectedCats = if (isChecked) {
+                                            selectedCats - categoryName
+                                        } else {
+                                            selectedCats + categoryName
+                                        }
                                     }
                                 )
                                 .clickable {
-                                    viewModel.updateVideoCategory(targetVideo, categoryName)
-                                    videoToEditCategory = null
+                                    selectedCats = if (isChecked) {
+                                        selectedCats - categoryName
+                                    } else {
+                                        selectedCats + categoryName
+                                    }
                                 }
                         ) {
-                            Text(
-                                text = categoryName,
-                                color = Color.White,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = categoryName,
+                                    color = if (isChecked) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (isChecked) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             },
-            confirmButton = {},
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalCats = if (selectedCats.isEmpty()) "Umum" else selectedCats.joinToString(", ")
+                        viewModel.updateVideoCategory(targetVideo, finalCats)
+                        videoToEditCategory = null
+                    },
+                    modifier = Modifier.dpadFocusable(
+                        shape = RoundedCornerShape(8.dp),
+                        style = FocusStyle.CTA,
+                        onClick = {
+                            val finalCats = if (selectedCats.isEmpty()) "Umum" else selectedCats.joinToString(", ")
+                            viewModel.updateVideoCategory(targetVideo, finalCats)
+                            videoToEditCategory = null
+                        }
+                    )
+                ) {
+                    Text("Simpan")
+                }
+            },
             dismissButton = {
                 TextButton(
                     onClick = { videoToEditCategory = null },
@@ -756,10 +876,10 @@ fun HomeScreen(
                         onClick = { videoToEditCategory = null }
                     )
                 ) {
-                    Text("Tutup", color = Color.LightGray)
+                    Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = Color(0xFF1E1E1E)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -776,11 +896,11 @@ fun HomeScreen(
 
         AlertDialog(
             onDismissRequest = { videoToDelete = null },
-            title = { Text("Hapus Video?", color = Color.White) },
+            title = { Text("Hapus Video?", color = MaterialTheme.colorScheme.onSurface) },
             text = {
                 Text(
                     text = "Video \"${video.title}\" beserta file fisiknya akan dihapus.",
-                    color = Color.LightGray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
             confirmButton = {
@@ -789,11 +909,14 @@ fun HomeScreen(
                         viewModel.deleteVideo(video)
                         videoToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
                     modifier = Modifier
                         .focusRequester(deleteBtnFocus)
                         .dpadFocusable(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(50),
                             style = FocusStyle.CTA,
                             onClick = {
                                 viewModel.deleteVideo(video)
@@ -904,7 +1027,7 @@ fun HeroBanner(
                 ) {
                     Text(
                         text = "SOROTAN UTAMA",
-                        color = Color(0xFFE50914),
+                        color = MaterialTheme.colorScheme.primary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -932,9 +1055,12 @@ fun HeroBanner(
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = onPlay,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(50),
                     modifier = Modifier.focusProperties { canFocus = false }
                 ) {
                     Icon(
@@ -960,7 +1086,9 @@ fun HomeSectionRow(
     onEditCategory: (DownloadedVideoEntity) -> Unit,
     onDelete: (DownloadedVideoEntity) -> Unit,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    onPlayAll: (() -> Unit)? = null,
+    onPlayRandom: (() -> Unit)? = null
 ) {
     val horizontalPad = if (compact) 12.dp else 16.dp
     Column(modifier = modifier.fillMaxWidth()) {
@@ -968,18 +1096,71 @@ fun HomeSectionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = horizontalPad, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontSize = if (compact) 16.sp else 18.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+
+            if (onPlayAll != null) {
+                Surface(
+                    onClick = onPlayAll,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier
+                        .size(if (compact) 28.dp else 32.dp)
+                        .dpadFocusable(
+                            shape = CircleShape,
+                            style = FocusStyle.CTA,
+                            onClick = onPlayAll
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Putar Berurutan Sesuai Abjad",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(if (compact) 16.dp else 18.dp)
+                        )
+                    }
+                }
+            }
+
+            if (onPlayRandom != null) {
+                Surface(
+                    onClick = onPlayRandom,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier
+                        .size(if (compact) 28.dp else 32.dp)
+                        .dpadFocusable(
+                            shape = CircleShape,
+                            style = FocusStyle.CTA,
+                            onClick = onPlayRandom
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Shuffle,
+                            contentDescription = "Putar Acak (Random)",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(if (compact) 14.dp else 16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
             Text(
                 text = "${videos.size} video",
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )
         }
@@ -1031,12 +1212,12 @@ fun HomeVideoCard(
     }
 
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = modifier
             .fillMaxWidth()
             .dpadFocusable(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 onClick = onClick
             )
             .onPreviewKeyEvent { keyEvent ->
@@ -1154,7 +1335,7 @@ fun HomeVideoCard(
                                 modifier = Modifier
                                     .width(2.dp)
                                     .fillMaxHeight()
-                                    .background(Color(0xFFE50914))
+                                    .background(MaterialTheme.colorScheme.primary)
                             )
                         }
                         if (1f - progressFraction > 0f) {
@@ -1195,7 +1376,7 @@ fun HomeVideoCard(
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                         .focusProperties { canFocus = !isTv }
-                        .background(Color(0xFFE50914).copy(alpha = 0.85f), RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
                         .clickable(onClick = onEditCategory)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
@@ -1203,12 +1384,18 @@ fun HomeVideoCard(
                         Icon(
                             imageVector = Icons.Default.Category,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(10.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
+                        val cats = video.categoriesList()
+                        val catLabel = when {
+                            cats.size > 1 -> "${cats.first()} (+${cats.size - 1})"
+                            cats.isNotEmpty() -> cats.first()
+                            else -> "Umum"
+                        }
                         Text(
-                            text = video.category,
+                            text = catLabel,
                             color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
@@ -1236,8 +1423,8 @@ fun HomeVideoCard(
                 LinearProgressIndicator(
                     progress = { (video.progress.coerceIn(0, 100)) / 100f },
                     modifier = Modifier.fillMaxWidth().height(3.dp),
-                    color = Color(0xFFE50914),
-                    trackColor = Color(0xFF333333)
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                 )
             }
 
@@ -1267,7 +1454,7 @@ fun HomeVideoCard(
                     Text(
                         text = video.title,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         ),
                         maxLines = 2,

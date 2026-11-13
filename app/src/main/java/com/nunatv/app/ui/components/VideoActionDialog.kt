@@ -74,7 +74,7 @@ fun VideoActionDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF1E1E1E),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 8.dp,
             modifier = Modifier
                 .widthIn(min = 320.dp, max = 460.dp)
@@ -123,21 +123,21 @@ fun VideoActionDialog(
                     text = "Aksi Video Nuna TV",
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Card(
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF282828)),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = videoUrl,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color.LightGray,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
                         ),
                         maxLines = 2,
@@ -169,9 +169,12 @@ fun VideoActionDialog(
                                     onDismiss()
                                 }
                             ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914))
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

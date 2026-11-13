@@ -16,6 +16,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
@@ -29,6 +30,7 @@ import com.nunatv.app.data.local.DownloadStatus
 import com.nunatv.app.data.local.DownloadedVideoEntity
 import com.nunatv.app.data.preferences.AppPreferences
 import com.nunatv.app.data.preferences.AudioBoostLevel
+import com.nunatv.app.data.preferences.PlaybackPositionStore
 import com.nunatv.app.data.repository.VideoRepository
 import com.nunatv.app.data.repository.YoutubeSearchItem
 import com.nunatv.app.data.repository.YoutubeSearchRepository
@@ -54,9 +56,11 @@ data class MediaPlaybackState(
     val isLiveStream: Boolean = false,
     val isShortStream: Boolean = false,
     val isLoadingStream: Boolean = false,
+    val isBuffering: Boolean = false,
     val streamLoadError: String? = null,
     val isPlaying: Boolean = false,
     val currentPositionMs: Long = 0L,
+    val bufferedPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val activeAudioStreamUrl: String? = null,
     val activeStreamQuality: StreamQualityOption? = null,
@@ -81,6 +85,7 @@ object MediaPlaybackManager {
     private var resolveJob: Job? = null
     private var relatedFetchJob: Job? = null
     private var prefetchJob: Job? = null
+    private var qualityEnrichJob: Job? = null
     private var positionLoopJob: Job? = null
 
     private var preferredHeightForResolve: Int = 720
@@ -141,8 +146,18 @@ object MediaPlaybackManager {
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                8_000,  // minBufferMs
+                20_000, // maxBufferMs (hemat RAM & cepat)
+                400,    // bufferForPlaybackMs (mulai putar instan di TV/Proyektor)
+                1_000   // bufferForPlaybackAfterRebufferMs
+            )
+            .build()
+
         val dataSourceFactory = DefaultDataSource.Factory(appCtx, httpDataSourceFactory)
         val created = ExoPlayer.Builder(appCtx)
+            .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -157,6 +172,8 @@ object MediaPlaybackManager {
                 _state.update { it.copy(isPlaying = playing) }
                 if (playing) {
                     startPositionLoop()
+                } else {
+                    saveCurrentPlaybackPosition()
                 }
             }
 
@@ -174,11 +191,21 @@ object MediaPlaybackManager {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val player = exoPlayer ?: return
-                if (playbackState == Player.STATE_READY) {
+                val safeBuffered = player.bufferedPosition.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
+                if (playbackState == Player.STATE_BUFFERING) {
+                    _state.update {
+                        it.copy(
+                            isBuffering = true,
+                            bufferedPositionMs = safeBuffered
+                        )
+                    }
+                } else if (playbackState == Player.STATE_READY) {
                     val safeDuration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
                     _state.update {
                         it.copy(
                             durationMs = safeDuration,
+                            bufferedPositionMs = safeBuffered,
+                            isBuffering = false,
                             isLiveStream = it.isLiveStream || player.isCurrentMediaItemLive,
                             streamLoadError = null
                         )
@@ -187,7 +214,13 @@ object MediaPlaybackManager {
                         setupLoudnessEnhancer(player.audioSessionId)
                     }
                 } else if (playbackState == Player.STATE_ENDED) {
+                    _state.update { it.copy(isBuffering = false) }
                     val snapshot = _state.value
+                    val ctx = appContext
+                    val endedId = snapshot.currentVideo?.videoId
+                    if (ctx != null && !endedId.isNullOrBlank()) {
+                        PlaybackPositionStore.clearPosition(ctx, endedId)
+                    }
                     val handleDirectlyInBackground = snapshot.isMinimizedInApp || !isAppForeground
                     if (handleDirectlyInBackground &&
                         !snapshot.isLiveStream &&
@@ -215,6 +248,22 @@ object MediaPlaybackManager {
         return created
     }
 
+    private var lastPositionPersistAtMs: Long = 0L
+    private var lastPositionPersistVideoId: String? = null
+
+    private fun saveCurrentPlaybackPosition() {
+        val ctx = appContext ?: return
+        val player = exoPlayer ?: return
+        val snapshot = _state.value
+        val video = snapshot.currentVideo ?: return
+        if (snapshot.isLiveStream || snapshot.isShortStream) return
+        val pos = player.currentPosition.takeIf { it != C.TIME_UNSET && it >= 0L } ?: return
+        val dur = player.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
+        PlaybackPositionStore.savePositionMs(ctx, video.videoId, pos, dur)
+        lastPositionPersistVideoId = video.videoId
+        lastPositionPersistAtMs = pos
+    }
+
     private fun startPositionLoop() {
         positionLoopJob?.cancel()
         positionLoopJob = managerScope.launch {
@@ -223,11 +272,27 @@ object MediaPlaybackManager {
                 if (!player.isPlaying) break
                 val safeDuration = player.duration.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
                 val safePosition = player.currentPosition.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
+                val safeBuffered = player.bufferedPosition.takeIf { it != C.TIME_UNSET && it >= 0L } ?: 0L
                 _state.update {
                     it.copy(
                         currentPositionMs = safePosition,
-                        durationMs = safeDuration
+                        bufferedPositionMs = safeBuffered,
+                        durationMs = safeDuration,
+                        isBuffering = player.playbackState == Player.STATE_BUFFERING
                     )
+                }
+                val snapshot = _state.value
+                val currentId = snapshot.currentVideo?.videoId
+                val ctx = appContext
+                if (ctx != null &&
+                    !currentId.isNullOrBlank() &&
+                    !snapshot.isLiveStream &&
+                    !snapshot.isShortStream &&
+                    (currentId != lastPositionPersistVideoId || kotlin.math.abs(safePosition - lastPositionPersistAtMs) >= 5_000L)
+                ) {
+                    PlaybackPositionStore.savePositionMs(ctx, currentId, safePosition, safeDuration)
+                    lastPositionPersistVideoId = currentId
+                    lastPositionPersistAtMs = safePosition
                 }
                 delay(500)
             }
@@ -272,13 +337,16 @@ object MediaPlaybackManager {
         minimized: Boolean = false
     ) {
         val appCtx = context.applicationContext
+        saveCurrentPlaybackPosition()
         resolveJob?.cancel()
         relatedFetchJob?.cancel()
         prefetchJob?.cancel()
+        qualityEnrichJob?.cancel()
         activeStreamUserAgent = null
         val player = ensurePlayer(appCtx)
 
         val channelId = channelIdCache[video.videoId].orEmpty()
+        val resumeMs = PlaybackPositionStore.getPositionMs(appCtx, video.videoId)
         lastRetryAction = { openLocalVideo(appCtx, video, allLocalVideos, minimized) }
 
         _state.update {
@@ -289,13 +357,15 @@ object MediaPlaybackManager {
                 isLiveStream = false,
                 isShortStream = false,
                 isLoadingStream = false,
+                isBuffering = false,
                 streamLoadError = null,
                 activeAudioStreamUrl = null,
                 activeStreamQuality = null,
                 streamQualityOptions = emptyList(),
                 activeChannelId = channelId,
                 isMinimizedInApp = minimized,
-                currentPositionMs = 0L,
+                currentPositionMs = resumeMs,
+                bufferedPositionMs = 0L,
                 durationMs = 0L
             )
         }
@@ -313,6 +383,9 @@ object MediaPlaybackManager {
         }
 
         player.setMediaItem(MediaItem.fromUri(Uri.fromFile(localFile)))
+        if (resumeMs > 0L) {
+            player.seekTo(resumeMs)
+        }
         player.prepare()
         player.playWhenReady = true
         syncBackgroundService(appCtx)
@@ -334,9 +407,11 @@ object MediaPlaybackManager {
             return
         }
 
+        saveCurrentPlaybackPosition()
         resolveJob?.cancel()
         relatedFetchJob?.cancel()
         prefetchJob?.cancel()
+        qualityEnrichJob?.cancel()
         activeStreamUserAgent = null
         val player = ensurePlayer(appCtx)
         player.pause()
@@ -369,9 +444,11 @@ object MediaPlaybackManager {
                 isLiveStream = item.durationText.equals("LIVE", ignoreCase = true),
                 isShortStream = item.isShort,
                 isLoadingStream = true,
+                isBuffering = false,
                 streamLoadError = null,
                 isPlaying = false,
                 currentPositionMs = 0L,
+                bufferedPositionMs = 0L,
                 durationMs = 0L,
                 activeAudioStreamUrl = null,
                 activeStreamQuality = null,
@@ -465,9 +542,34 @@ object MediaPlaybackManager {
             }
 
             activeStreamUserAgent = resolved.userAgent
-            prepareAndPlayStream(resolved.streamUrl, resolved.audioStreamUrl, seekMs = 0L, userAgent = resolved.userAgent)
+            val resumeMs = if (resolved.isLive || item.isShort) {
+                0L
+            } else {
+                PlaybackPositionStore.getPositionMs(appCtx, item.videoId)
+            }
+            prepareAndPlayStream(resolved.streamUrl, resolved.audioStreamUrl, seekMs = resumeMs, userAgent = resolved.userAgent)
             syncBackgroundService(appCtx)
             prefetchNextInBackground(appCtx)
+
+            if (!resolved.isLive && resolved.qualityOptions.size <= 1) {
+                qualityEnrichJob = managerScope.launch {
+                    val full = YoutubeDlManager.resolveViaYtDlpOnly(
+                        context = appCtx,
+                        videoUrl = item.watchUrl,
+                        preferredHeight = preferredHeightForResolve
+                    ) ?: return@launch
+                    if (_state.value.currentVideo?.videoId == item.videoId && full.qualityOptions.size > 1) {
+                        YoutubeDlManager.cacheResolvedVideo(item.watchUrl, preferredHeightForResolve, full)
+                        _state.update { cur ->
+                            if (cur.currentVideo?.videoId == item.videoId) {
+                                cur.copy(streamQualityOptions = full.qualityOptions)
+                            } else {
+                                cur
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -711,9 +813,11 @@ object MediaPlaybackManager {
 
     fun stopAndClear(context: Context) {
         val appCtx = context.applicationContext
+        saveCurrentPlaybackPosition()
         resolveJob?.cancel()
         relatedFetchJob?.cancel()
         prefetchJob?.cancel()
+        qualityEnrichJob?.cancel()
         positionLoopJob?.cancel()
         activeStreamUserAgent = null
         lastRetryAction = null

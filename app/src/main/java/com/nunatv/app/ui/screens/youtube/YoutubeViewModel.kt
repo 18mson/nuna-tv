@@ -256,22 +256,22 @@ class YoutubeViewModel(
                     if (owner.second.isNotBlank()) targetName = owner.second
                 }
             }
-            val resolvedDest = ChannelDestination(
+            val resolvedDest = dest.copy(
                 channelId = targetId,
-                channelName = targetName.ifBlank { "Channel YouTube" },
-                sourceVideoId = dest.sourceVideoId
+                channelName = targetName.ifBlank { "Channel YouTube" }
             )
             _uiState.update { it.copy(activeChannel = resolvedDest) }
 
-            val res = YoutubeSearchRepository.getChannelVideos(appContext, targetId, targetName)
+            val res = YoutubeSearchRepository.getChannelData(appContext, targetId, targetName, dest.sourceVideoId)
             res.fold(
-                onSuccess = { list ->
+                onSuccess = { channelData ->
                     _uiState.update {
                         it.copy(
-                            results = list,
+                            activeChannel = channelData.channel,
+                            results = channelData.videos,
                             isLoading = false,
                             hasLoadedOnce = true,
-                            errorMessage = if (list.isEmpty()) "Belum ada video di channel ini." else null
+                            errorMessage = if (channelData.videos.isEmpty()) "Belum ada video di channel ini." else null
                         )
                     }
                 },

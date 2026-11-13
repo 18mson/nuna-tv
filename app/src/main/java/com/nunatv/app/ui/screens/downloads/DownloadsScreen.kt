@@ -225,7 +225,7 @@ fun VideoItemCard(
                             .fillMaxWidth()
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp)),
-                        color = Color(0xFFE50914),
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.DarkGray
                     )
                 }

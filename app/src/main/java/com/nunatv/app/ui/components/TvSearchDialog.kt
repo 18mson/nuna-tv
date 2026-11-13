@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -100,7 +101,7 @@ fun TvSearchDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(16.dp),
-            color = Color(0xFF181818),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             border = BorderStroke(1.dp, Color(0xFF333333)),
             modifier = Modifier
                 .padding(20.dp)
@@ -139,29 +140,32 @@ fun TvSearchDialog(
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Kotak tampilan teks pencarian
+                // Kotak tampilan teks pencarian sama persis rounded & ukurannya dengan tab YouTube
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF252525),
-                    border = BorderStroke(1.dp, Color(0xFFE50914)),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
                 ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = null,
-                            tint = Color(0xFFE50914)
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = if (query.isEmpty()) "Ketik kata kunci pencarian..." else "$query|",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                color = if (query.isEmpty()) Color.Gray else Color.White,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                color = if (query.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Medium
                             ),
                             maxLines = 1,
@@ -218,7 +222,7 @@ fun TvSearchDialog(
                                         Icon(
                                             imageVector = Icons.Default.Search,
                                             contentDescription = null,
-                                            tint = Color(0xFFE50914),
+                                            tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -251,8 +255,8 @@ fun TvSearchDialog(
                             var keyFocused by remember { mutableStateOf(false) }
 
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (keyFocused) Color(0xFFF5F5F5) else Color(0xFF2A2A2A),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (keyFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier
                                     .size(width = 48.dp, height = 42.dp)
                                     .scale(if (keyFocused) 1.08f else 1f)
@@ -266,7 +270,7 @@ fun TvSearchDialog(
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         text = ch,
-                                        color = if (keyFocused) Color(0xFF121212) else Color.White,
+                                        color = if (keyFocused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 15.sp
                                     )
@@ -286,48 +290,57 @@ fun TvSearchDialog(
                 ) {
                     Button(
                         onClick = { query += " " },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         modifier = Modifier.dpadFocusable(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(50),
                             style = FocusStyle.CTA,
                             onClick = { query += " " }
                         )
                     ) {
                         Icon(Icons.Default.SpaceBar, contentDescription = "Spasi", modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Spasi", fontSize = 13.sp)
+                        Text("Spasi", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
 
                     Button(
                         onClick = { if (query.isNotEmpty()) query = query.dropLast(1) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         modifier = Modifier.dpadFocusable(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(50),
                             style = FocusStyle.CTA,
                             onClick = { if (query.isNotEmpty()) query = query.dropLast(1) }
                         )
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = "Hapus", modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Hapus", fontSize = 13.sp)
+                        Text("Hapus", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
 
                     Button(
                         onClick = { query = "" },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333333)),
-                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         modifier = Modifier.dpadFocusable(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(50),
                             style = FocusStyle.CTA,
                             onClick = { query = "" }
                         )
                     ) {
-                        Text("Clear", fontSize = 13.sp)
+                        Text("Clear", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
 
                     Button(
@@ -336,8 +349,11 @@ fun TvSearchDialog(
                                 onSearch(query.trim())
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914)),
-                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
                         modifier = Modifier.dpadFocusable(
                             shape = RoundedCornerShape(8.dp),

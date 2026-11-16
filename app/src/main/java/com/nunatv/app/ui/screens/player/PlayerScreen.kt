@@ -1,7 +1,10 @@
 package com.nunatv.app.ui.screens.player
 
+import android.content.Intent
+import android.content.res.Configuration
 import android.view.KeyEvent
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -18,6 +21,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,6 +43,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -59,6 +64,7 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
@@ -68,6 +74,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -78,6 +85,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -99,6 +107,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -111,6 +120,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.nunatv.app.data.local.DownloadedVideoEntity
+import com.nunatv.app.data.local.NunaDatabase
+import com.nunatv.app.data.local.SubscribedChannelEntity
 import com.nunatv.app.data.preferences.AudioBoostLevel
 import com.nunatv.app.downloader.StreamQualityOption
 import com.nunatv.app.player.MediaPlaybackManager
@@ -158,6 +169,12 @@ fun PlayerScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isTv = remember { DeviceUtils.isTvDevice(context) }
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    val isMobileSplitView = !isTv && !isInPictureInPictureMode && !isShortStream && isPortrait
+
+    val channelDao = remember(context) { NunaDatabase.getInstance(context).channelDao() }
+    val subscriptions by channelDao.getAllSubscriptions().collectAsState(initial = emptyList<SubscribedChannelEntity>())
 
     // Playlist rekomendasi video selain video yang sedang diputar
     val recommendations = remember(currentVideo, allVideos) {
@@ -317,11 +334,27 @@ fun PlayerScreen(
         handleBackNavigation()
     }
 
+    val playerHeightDp = remember(configuration.screenWidthDp) {
+        (configuration.screenWidthDp * 9f / 16f).dp
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .pointerInput(isShortStream, nextVideo?.id, prevVideo?.id, isInPictureInPictureMode) {
+            .background(if (isMobileSplitView) MaterialTheme.colorScheme.background else Color.Black)
+    ) {
+        Box(
+            modifier = (if (isMobileSplitView) {
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .aspectRatio(16f / 9f)
+                    .align(Alignment.TopCenter)
+            } else {
+                Modifier.fillMaxSize()
+            })
+                .background(Color.Black)
+                .pointerInput(isShortStream, nextVideo?.id, prevVideo?.id, isInPictureInPictureMode) {
                 if (isInPictureInPictureMode) return@pointerInput
                 var totalDragY = 0f
                 var handledDrag = false
@@ -1954,6 +1987,317 @@ fun PlayerScreen(
             }
         }
     }
+
+        if (isMobileSplitView) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(top = playerHeightDp)
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                // Judul Video
+                item {
+                    Text(
+                        text = currentVideo.title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            lineHeight = 22.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Baris Channel & Subscribe
+                item {
+                    val targetChannelId = activeChannelId?.ifBlank { null } ?: currentVideo.author
+                    val isSubscribed = subscriptions.any {
+                        it.channelId == targetChannelId || it.channelName.equals(currentVideo.author, ignoreCase = true)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    if (targetChannelId.isNotBlank()) {
+                                        onOpenChannel?.invoke(targetChannelId, currentVideo.author, currentVideo.videoId)
+                                    }
+                                }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = currentVideo.author.take(1).uppercase(),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = currentVideo.author.ifBlank { "YouTube" },
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (isSubscribed) "Langganan aktif" else "Ketuk untuk buka channel",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (isSubscribed) {
+                                        channelDao.unsubscribe(targetChannelId)
+                                        Toast.makeText(context, "Batal berlangganan ${currentVideo.author}", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        channelDao.subscribe(
+                                            SubscribedChannelEntity(
+                                                channelId = targetChannelId,
+                                                channelName = currentVideo.author
+                                            )
+                                        )
+                                        Toast.makeText(context, "Berlangganan ${currentVideo.author}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSubscribed) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                                contentColor = if (isSubscribed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = if (isSubscribed) "Disubscribe" else "Langganan",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // Tombol Aksi: Download, Bagikan, Kualitas
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            onClick = {
+                                onTriggerDownload?.invoke()
+                                Toast.makeText(context, "Mulai mengunduh...", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "Download",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Download",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                val shareUrl = if (currentVideo.originalUrl.isNotBlank()) {
+                                    currentVideo.originalUrl
+                                } else {
+                                    "https://www.youtube.com/watch?v=${currentVideo.videoId}"
+                                }
+                                val sendIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    putExtra(Intent.EXTRA_TEXT, "${currentVideo.title}\n$shareUrl")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "Bagikan video"))
+                            },
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Bagikan",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Bagikan",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                showTopMenu = !showTopMenu
+                            },
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Kualitas",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = activeStreamQuality?.label ?: "Kualitas",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // Rekomendasi Video
+                if (recommendations.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Video Terkait",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
+                    items(recommendations, key = { it.id }) { rec ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onVideoChange(rec) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(120.dp)
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.DarkGray)
+                            ) {
+                                AsyncImage(
+                                    model = rec.thumbnailUrl,
+                                    contentDescription = rec.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (rec.durationSeconds > 0) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color.Black.copy(alpha = 0.8f),
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(4.dp)
+                                    ) {
+                                        Text(
+                                            text = formatTimeMs(rec.durationSeconds * 1000),
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = rec.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 13.sp,
+                                        lineHeight = 17.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = rec.author.ifBlank { "YouTube" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Spacer(modifier = Modifier.height(100.dp))
+                    }
+                }
+            }
+        }
+    }
+}
 }
 
 @Composable

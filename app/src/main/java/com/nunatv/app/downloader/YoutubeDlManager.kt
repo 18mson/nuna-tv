@@ -230,6 +230,7 @@ object YoutubeDlManager {
 
             fun fetchInfoWithArgs(extractorArgs: String? = null): VideoInfo? {
                 val request = YoutubeDLRequest(targetUrl).apply {
+                    addOption("--js-runtimes", "quickjs")
                     if (!extractorArgs.isNullOrBlank()) {
                         addOption("--extractor-args", extractorArgs)
                     }
@@ -683,6 +684,7 @@ object YoutubeDlManager {
 
             fun fetch(args: String?): VideoInfo? {
                 val request = YoutubeDLRequest(targetUrl).apply {
+                    addOption("--js-runtimes", "quickjs")
                     if (!args.isNullOrBlank()) {
                         addOption("--extractor-args", args)
                     }
@@ -721,6 +723,7 @@ object YoutubeDlManager {
             val targetUrl = cleanUrl(videoUrl)
             fun fetch(args: String?): VideoInfo? {
                 val request = YoutubeDLRequest(targetUrl).apply {
+                    addOption("--js-runtimes", "quickjs")
                     if (!args.isNullOrBlank()) {
                         addOption("--extractor-args", args)
                     }
@@ -768,93 +771,105 @@ object YoutubeDlManager {
             // Template nama file unik berdasarkan judul dan id
             val outputTemplate = "${destDirectory.absolutePath}/%(title).80s-[%(id)s].%(ext)s"
 
-            val request = YoutubeDLRequest(targetUrl).apply {
-                addOption("-f", formatSpec)
-                addOption("-o", outputTemplate)
-                addOption("--no-playlist")
-                addOption("--no-mtime")
-                addOption("--no-check-certificates")
-                // Paksa client android+ios agar tidak bergantung JS runtime.
-                // Client default visionos (tanpa JS) gagal untuk video "Made for Kids" seperti BabyBus.
-                addOption("--extractor-args", YOUTUBE_DOWNLOAD_ARGS)
-                val cookiesFile = getCookiesFile(context)
-                if (cookiesFile != null && cookiesFile.exists() && cookiesFile.length() > 0) {
-                    addOption("--cookies", cookiesFile.absolutePath)
+            // Opsi client yang dicoba bertahap jika salah satu dibatasi oleh YouTube
+            val extractorCandidates: List<String?> = listOf(
+                YOUTUBE_DOWNLOAD_ARGS,
+                "youtube:player_client=ios,web",
+                null
+            )
+
+            var targetFile: File? = null
+            var lastException: Exception? = null
+
+            for (args in extractorCandidates) {
+                try {
+                    val request = YoutubeDLRequest(targetUrl).apply {
+                        addOption("-f", formatSpec)
+                        addOption("-o", outputTemplate)
+                        addOption("--no-playlist")
+                        addOption("--no-mtime")
+                        addOption("--no-check-certificates")
+                        addOption("--js-runtimes", "quickjs")
+                        if (!args.isNullOrBlank()) {
+                            addOption("--extractor-args", args)
+                        }
+                        val cookiesFile = getCookiesFile(context)
+                        if (cookiesFile != null && cookiesFile.exists() && cookiesFile.length() > 0) {
+                            addOption("--cookies", cookiesFile.absolutePath)
+                        }
+                        if (!formatSpec.contains("bestaudio") || formatSpec.contains("bestvideo")) {
+                            addOption("--merge-output-format", "mp4")
+                        }
+                        addOption("--socket-timeout", "60")
+                        addOption("--retries", "5")
+                    }
+
+                    var lastRawProgress = 0f
+                    var streamStage = 1 // 1: Video (0-50%), 2: Audio (50-90%), 3: Merge/Build (90-100%)
+                    var hasSeenVideoDownload = false
+
+                    val isSplitFormat = formatSpec.contains("+") || (!formatSpec.contains("bestaudio") && !formatSpec.contains("AUDIO_ONLY"))
+
+                    val response = YoutubeDL.getInstance().execute(request) { rawProgress, etaInSeconds, lineOrNull ->
+                        val line = lineOrNull ?: ""
+
+                        // Deteksi fase berdasarkan output log yt-dlp
+                        if (line.contains("[Merger]") || line.contains("Merging formats") || line.contains("Deleting original file")) {
+                            streamStage = 3
+                        } else if (line.contains("[download] Destination:") || line.contains("Destination:")) {
+                            if (hasSeenVideoDownload) {
+                                streamStage = 2
+                            }
+                        }
+
+                        // Deteksi perpindahan ke stream audio kedua (misal rawProgress reset dari >75% ke <25%)
+                        if (isSplitFormat && streamStage == 1 && lastRawProgress > 75f && rawProgress < 25f) {
+                            streamStage = 2
+                        }
+
+                        if (rawProgress > 10f) {
+                            hasSeenVideoDownload = true
+                        }
+                        lastRawProgress = rawProgress
+
+                        val compositeProgress: Float = if (!isSplitFormat) {
+                            rawProgress.coerceIn(0f, 100f)
+                        } else {
+                            when (streamStage) {
+                                1 -> (rawProgress * 0.50f).coerceIn(0f, 50f)
+                                2 -> (50f + (rawProgress * 0.40f)).coerceIn(50f, 90f)
+                                else -> 95f
+                            }
+                        }
+
+                        onProgress(compositeProgress, etaInSeconds, line)
+                    }
+
+                    Log.d(TAG, "Download selesai: ${response.out}")
+
+                    // Cari file yang baru dibuat di direktori tujuan yang cocok
+                    val downloadedFiles = destDirectory.listFiles { file ->
+                        file.isFile && (file.extension == "mp4" || file.extension == "mkv" || file.extension == "m4a" || file.extension == "webm")
+                    }?.sortedByDescending { it.lastModified() }
+
+                    val found = downloadedFiles?.firstOrNull()
+                    if (found != null && found.exists()) {
+                        targetFile = found
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Download coba extractor args '$args' gagal: ${e.message}")
+                    lastException = e
                 }
-                if (!formatSpec.contains("bestaudio") || formatSpec.contains("bestvideo")) {
-                    addOption("--merge-output-format", "mp4")
-                }
-                addOption("--socket-timeout", "60")
-                addOption("--retries", "5")
             }
 
-            var lastRawProgress = 0f
-            var streamStage = 1 // 1: Video (0-50%), 2: Audio (50-90%), 3: Merge/Build (90-100%)
-            var hasSeenVideoDownload = false
-
-            val isSplitFormat = formatSpec.contains("+") || (!formatSpec.contains("bestaudio") && !formatSpec.contains("AUDIO_ONLY"))
-
-            val response = YoutubeDL.getInstance().execute(request) { rawProgress, etaInSeconds, lineOrNull ->
-                val line = lineOrNull ?: ""
-
-                // Deteksi fase berdasarkan output log yt-dlp
-                if (line.contains("[Merger]") || line.contains("Merging formats") || line.contains("Deleting original file")) {
-                    streamStage = 3
-                } else if (line.contains("[download] Destination:") || line.contains("Destination:")) {
-                    if (hasSeenVideoDownload) {
-                        streamStage = 2
-                    }
-                }
-
-                // Deteksi perpindahan ke stream audio kedua (misal rawProgress reset dari >75% ke <25%)
-                if (isSplitFormat && streamStage == 1 && lastRawProgress > 75f && rawProgress < 25f) {
-                    streamStage = 2
-                }
-
-                if (rawProgress > 10f) {
-                    hasSeenVideoDownload = true
-                }
-                lastRawProgress = rawProgress
-
-                val compositeProgress: Float = if (!isSplitFormat) {
-                    rawProgress.coerceIn(0f, 100f)
-                } else {
-                    when (streamStage) {
-                        1 -> {
-                            // Video berbobot 50% (0% - 50%)
-                            (rawProgress * 0.50f).coerceIn(0f, 50f)
-                        }
-                        2 -> {
-                            // Audio berbobot 40% (50% - 90%)
-                            (50f + (rawProgress * 0.40f)).coerceIn(50f, 90f)
-                        }
-                        else -> {
-                            // Proses penggabungan / build berbobot 10% (90% - 100%)
-                            95f
-                        }
-                    }
-                }
-
-                onProgress(compositeProgress, etaInSeconds, line)
-            }
-
-            Log.d(TAG, "Download selesai: ${response.out}")
-
-            // Cari file yang baru dibuat di direktori tujuan yang cocok
-            val downloadedFiles = destDirectory.listFiles { file ->
-                file.isFile && (file.extension == "mp4" || file.extension == "mkv" || file.extension == "m4a" || file.extension == "webm")
-            }?.sortedByDescending { it.lastModified() }
-
-            val targetFile = downloadedFiles?.firstOrNull()
             if (targetFile != null && targetFile.exists()) {
                 Result.success(targetFile)
             } else {
-                Result.failure(Exception("File hasil unduhan tidak ditemukan di ${destDirectory.absolutePath}"))
+                val finalErr = lastException ?: Exception("File hasil unduhan tidak ditemukan di ${destDirectory.absolutePath}")
+                Result.failure(finalErr)
             }
 
-        } catch (e: YoutubeDLException) {
-            Log.e(TAG, "YoutubeDL Error: ${e.message}", e)
-            Result.failure(e)
         } catch (e: Exception) {
             Log.e(TAG, "General Download Error: ${e.message}", e)
             Result.failure(e)

@@ -223,7 +223,7 @@ class MainActivity : ComponentActivity() {
             }
 
             NunaTheme(palette = colorPalette, themeMode = themeMode) {
-                val isDark = themeMode == AppThemeMode.DARK
+                val isDark = if (showFullPlayer && !playbackState.isMinimizedInApp) true else themeMode == AppThemeMode.DARK
                 val insetsController = remember(window) { WindowInsetsControllerCompat(window, window.decorView) }
                 SideEffect {
                     insetsController.isAppearanceLightStatusBars = !isDark

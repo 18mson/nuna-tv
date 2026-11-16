@@ -7,6 +7,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,18 +65,18 @@ fun AdaptiveScaffold(
     val navItems = listOf(Screen.Home, Screen.YoutubeTv, Screen.Settings)
     val isPlayerActive = currentRoute == "player" || currentRoute?.startsWith("player") == true
 
-    if (isPlayerActive) {
-        // Mode Fullscreen tanpa navigation bar
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Navigasi di sisi kiri jika TV atau saat layar horizontal (landscape) di HP
+    val useSideNav = isTv || isLandscape
+
+    if (isTv && isPlayerActive) {
+        // Mode Fullscreen tanpa sidebar di Android TV saat memutar video
         Box(modifier = Modifier.fillMaxSize()) {
             content()
         }
         return
     }
-
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    // Navigasi di sisi kiri jika TV atau saat layar horizontal (landscape) di HP
-    val useSideNav = isTv || isLandscape
 
     if (useSideNav) {
         var isSidebarFocused by remember { mutableStateOf(false) }
@@ -201,66 +203,79 @@ fun AdaptiveScaffold(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 miniPlayerContent()
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(top = 4.dp, bottom = 12.dp),
-                    contentAlignment = Alignment.Center
+                AnimatedVisibility(
+                    visible = !isPlayerActive,
+                    enter = fadeIn(tween(180)) + slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(180)
+                    ),
+                    exit = fadeOut(tween(140)) + slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(140)
+                    )
                 ) {
-                Surface(
-                    shape = RoundedCornerShape(percent = 50),
-                    color = pillContainerColor,
-                    shadowElevation = 8.dp,
-                    tonalElevation = 4.dp,
-                    border = BorderStroke(1.dp, pillBorderColor)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(top = 4.dp, bottom = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        navItems.forEach { screen ->
-                            val selected = currentRoute == screen.route
-                            val targetBgColor = if (selected) {
-                                if (isDark) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.surfaceContainerLowest
-                            } else {
-                                Color.Transparent
-                            }
-                            val targetIconColor = if (selected) {
-                                if (isDark) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.primary
-                            } else {
-                                if (isDark) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.onPrimaryContainer
-                            }
-
-                            val animBgColor by animateColorAsState(
-                                targetValue = targetBgColor,
-                                animationSpec = tween(durationMillis = 200),
-                                label = "tab_bg_${screen.route}"
-                            )
-                            val animIconColor by animateColorAsState(
-                                targetValue = targetIconColor,
-                                animationSpec = tween(durationMillis = 200),
-                                label = "tab_icon_${screen.route}"
-                            )
-
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(animBgColor)
-                                    .clickable { onNavigate(screen) },
-                                contentAlignment = Alignment.Center
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = pillContainerColor,
+                            shadowElevation = 8.dp,
+                            tonalElevation = 4.dp,
+                            border = BorderStroke(1.dp, pillBorderColor)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = screen.icon,
-                                    contentDescription = screen.title,
-                                    tint = animIconColor,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                navItems.forEach { screen ->
+                                    val selected = currentRoute == screen.route
+                                    val targetBgColor = if (selected) {
+                                        if (isDark) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.surfaceContainerLowest
+                                    } else {
+                                        Color.Transparent
+                                    }
+                                    val targetIconColor = if (selected) {
+                                        if (isDark) MaterialTheme.colorScheme.onPrimary
+                                        else MaterialTheme.colorScheme.primary
+                                    } else {
+                                        if (isDark) MaterialTheme.colorScheme.onSurfaceVariant
+                                        else MaterialTheme.colorScheme.onPrimaryContainer
+                                    }
+
+                                    val animBgColor by animateColorAsState(
+                                        targetValue = targetBgColor,
+                                        animationSpec = tween(durationMillis = 200),
+                                        label = "tab_bg_${screen.route}"
+                                    )
+                                    val animIconColor by animateColorAsState(
+                                        targetValue = targetIconColor,
+                                        animationSpec = tween(durationMillis = 200),
+                                        label = "tab_icon_${screen.route}"
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(animBgColor)
+                                            .clickable { onNavigate(screen) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = screen.icon,
+                                            contentDescription = screen.title,
+                                            tint = animIconColor,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -268,7 +283,6 @@ fun AdaptiveScaffold(
             }
         }
     }
-}
 }
 
 @Composable

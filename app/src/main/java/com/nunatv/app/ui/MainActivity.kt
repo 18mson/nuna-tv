@@ -21,6 +21,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
@@ -171,6 +178,7 @@ class MainActivity : ComponentActivity() {
             val audioBoostLevel by appPreferences.audioBoostLevel.collectAsState(initial = AudioBoostLevel.OFF)
             val backgroundPlaybackEnabled by appPreferences.backgroundPlaybackEnabled.collectAsState(initial = false)
             val pipEnabled by appPreferences.pipEnabled.collectAsState(initial = false)
+            val hideShortsEnabled by appPreferences.hideShortsEnabled.collectAsState(initial = false)
             val hasSeenOnboarding by appPreferences.hasSeenOnboarding.collectAsState(initial = null)
             val colorPalette by appPreferences.colorPalette.collectAsState(initial = AppColorPalette.RED)
             val themeMode by appPreferences.themeMode.collectAsState(initial = AppThemeMode.DARK)
@@ -234,91 +242,38 @@ class MainActivity : ComponentActivity() {
                     insetsController.isAppearanceLightNavigationBars = !isDark
                 }
 
+            Box(modifier = Modifier.fillMaxSize()) {
                 AdaptiveScaffold(
-                isTv = isTvDevice,
-                currentRoute = if (showFullPlayer) "player" else currentTab,
-                onNavigate = { targetScreen ->
-                    currentTab = targetScreen.route
-                },
-                miniPlayerContent = {
-                    if (!showFullPlayer && playbackState.currentVideo != null) {
-                        MiniPlayerBar(
-                            playbackState = playbackState,
-                            hasNext = MediaPlaybackManager.hasNextVideo(),
-                            onExpand = { MediaPlaybackManager.setMinimized(false) },
-                            onTogglePlayPause = { MediaPlaybackManager.togglePlayPause() },
-                            onNext = { MediaPlaybackManager.skipNext() },
-                            onClose = { MediaPlaybackManager.stopAndClear(this@MainActivity) }
-                        )
-                    }
-                }
-            ) {
-                if (showFullPlayer && playbackState.currentVideo != null) {
-                    val playing = playbackState.currentVideo!!
-                    val shouldOfferDownload = playbackState.isRemoteStream &&
-                        !playbackState.isLiveStream &&
-                        !playbackState.isLoadingStream &&
-                        playbackState.streamLoadError == null &&
-                        (playing.videoId !in savedOrActiveVideoIds)
-
-                    PlayerScreen(
-                        playbackState = playbackState,
-                        downloadResolutionLabel = defaultResolution.label,
-                        isInPictureInPictureMode = isInPipModeState,
-                        pipEnabled = !isTvDevice && pipEnabled && supportsPip(),
-                        onEnterPip = if (!isTvDevice && pipEnabled && supportsPip()) {
-                            { enterPipManually(playbackState) }
-                        } else {
-                            null
-                        },
-                        onRetryStream = { MediaPlaybackManager.retryLoadStream() },
-                        onAudioBoostChange = { nextLevel ->
-                            MediaPlaybackManager.setAudioBoostLevel(nextLevel)
-                            coroutineScope.launch {
-                                appPreferences.setAudioBoostLevel(nextLevel)
-                            }
-                        },
-                        onSelectStreamQuality = { option ->
-                            MediaPlaybackManager.selectStreamQuality(option)
-                        },
-                        onOpenChannel = { chId, chName, vidId ->
-                            MediaPlaybackManager.stopAndClear(this@MainActivity)
-                            pendingChannelToOpen = ChannelDestination(
-                                channelId = chId,
-                                channelName = chName,
-                                sourceVideoId = vidId
+                    isTv = isTvDevice,
+                    currentRoute = if (showFullPlayer) "player" else currentTab,
+                    onNavigate = { targetScreen ->
+                        currentTab = targetScreen.route
+                    },
+                    miniPlayerContent = {
+                        AnimatedVisibility(
+                            visible = !showFullPlayer && playbackState.currentVideo != null,
+                            enter = slideInVertically(
+                                initialOffsetY = { it },
+                                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                            ) + fadeIn(animationSpec = tween(180)),
+                            exit = slideOutVertically(
+                                targetOffsetY = { it },
+                                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                            ) + fadeOut(animationSpec = tween(140))
+                        ) {
+                            MiniPlayerBar(
+                                playbackState = playbackState,
+                                hasNext = MediaPlaybackManager.hasNextVideo(),
+                                onExpand = { MediaPlaybackManager.setMinimized(false) },
+                                onTogglePlayPause = { MediaPlaybackManager.togglePlayPause() },
+                                onNext = { MediaPlaybackManager.skipNext() },
+                                onClose = { MediaPlaybackManager.stopAndClear(this@MainActivity) }
                             )
-                            currentTab = Screen.YoutubeTv.route
-                        },
-                        onTriggerDownload = if (shouldOfferDownload) {
-                            {
-                                DownloadService.start(
-                                    context = this@MainActivity,
-                                    videoUrl = playing.originalUrl,
-                                    resolutionName = defaultResolution.name
-                                )
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    "Memulai download (${defaultResolution.label})...",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        } else {
-                            null
-                        },
-                        onVideoChange = { nextVideo ->
-                            MediaPlaybackManager.switchToPlaylistVideo(this@MainActivity, nextVideo)
-                        },
-                        onMinimizeToMiniPlayer = {
-                            MediaPlaybackManager.setMinimized(true)
-                        },
-                        onBack = {
-                            MediaPlaybackManager.stopAndClear(this@MainActivity)
                         }
-                    )
-                } else {
+                    }
+                ) {
+                    // Layar Tab Utama (Home, YouTube, Settings) selalu standby di background
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // 1. Tab Home (Pustaka Offline)
                         if (currentTab == Screen.Home.route) {
                             HomeScreen(
                                 viewModel = homeViewModel,
@@ -340,7 +295,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // 2. Tab YouTube Native (State & Posisi Scroll Persisten di ViewModel)
                         if (currentTab == Screen.YoutubeTv.route) {
                             TvYoutubeScreen(
                                 youtubeViewModel = youtubeViewModel,
@@ -371,13 +325,93 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // 3. Tab Settings
                         if (currentTab == Screen.Settings.route) {
                             SettingsScreen(
                                 appPreferences = appPreferences,
                                 onShowGuide = { showOnboardingDialog = true }
                             )
                         }
+                    }
+                }
+
+                // Layar Full Player dengan animasi geser ke bawah / ke atas ala YouTube (Berada di atas Scaffold, Persisten pada Rotasi Layar)
+                AnimatedVisibility(
+                    visible = showFullPlayer && playbackState.currentVideo != null,
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(durationMillis = 180)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(durationMillis = 180)),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    val playing = playbackState.currentVideo
+                    if (playing != null) {
+                        val shouldOfferDownload = playbackState.isRemoteStream &&
+                            !playbackState.isLiveStream &&
+                            !playbackState.isLoadingStream &&
+                            playbackState.streamLoadError == null &&
+                            (playing.videoId !in savedOrActiveVideoIds)
+
+                        PlayerScreen(
+                            playbackState = playbackState,
+                            downloadResolutionLabel = defaultResolution.label,
+                            isInPictureInPictureMode = isInPipModeState,
+                            pipEnabled = !isTvDevice && pipEnabled && supportsPip(),
+                            backgroundPlaybackEnabled = backgroundPlaybackEnabled,
+                            hideShortsEnabled = hideShortsEnabled,
+                            onEnterPip = if (!isTvDevice && pipEnabled && supportsPip()) {
+                                { enterPipManually(playbackState) }
+                            } else {
+                                null
+                            },
+                            onRetryStream = { MediaPlaybackManager.retryLoadStream() },
+                            onAudioBoostChange = { nextLevel ->
+                                MediaPlaybackManager.setAudioBoostLevel(nextLevel)
+                                coroutineScope.launch {
+                                    appPreferences.setAudioBoostLevel(nextLevel)
+                                }
+                            },
+                            onSelectStreamQuality = { option ->
+                                MediaPlaybackManager.selectStreamQuality(option)
+                            },
+                            onOpenChannel = { chId, chName, vidId ->
+                                MediaPlaybackManager.stopAndClear(this@MainActivity)
+                                pendingChannelToOpen = ChannelDestination(
+                                    channelId = chId,
+                                    channelName = chName,
+                                    sourceVideoId = vidId
+                                )
+                                currentTab = Screen.YoutubeTv.route
+                            },
+                            onTriggerDownload = if (shouldOfferDownload) {
+                                {
+                                    DownloadService.start(
+                                        context = this@MainActivity,
+                                        videoUrl = playing.originalUrl,
+                                        resolutionName = defaultResolution.name
+                                    )
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Memulai download (${defaultResolution.label})...",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            } else {
+                                null
+                            },
+                            onVideoChange = { nextVideo ->
+                                MediaPlaybackManager.switchToPlaylistVideo(this@MainActivity, nextVideo)
+                            },
+                            onMinimizeToMiniPlayer = {
+                                MediaPlaybackManager.setMinimized(true)
+                            },
+                            onBack = {
+                                MediaPlaybackManager.stopAndClear(this@MainActivity)
+                            }
+                        )
                     }
                 }
             }

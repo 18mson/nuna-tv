@@ -32,8 +32,12 @@ data class YoutubeSearchItem(
         }
 
     val isShort: Boolean
-        get() = durationText.equals("SHORTS", ignoreCase = true) ||
-            title.contains("#shorts", ignoreCase = true)
+        get() {
+            if (durationText.equals("SHORTS", ignoreCase = true)) return true
+            if (title.contains("#shorts", ignoreCase = true) || title.contains("#short", ignoreCase = true)) return true
+            val sec = YoutubeSearchRepository.parseDurationSeconds(durationText)
+            return sec != null && sec in 1L..75L
+        }
 }
 
 data class ChannelDataResult(

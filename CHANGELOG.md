@@ -2,6 +2,19 @@
 
 Semua perubahan penting pada proyek Nuna TV dicatat di dokumen ini mengikuti format Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
+## [1.3.3] - 2026-11-16
+
+Pembaruan stabilitas orientasi player mobile, penguncian vertikal YouTube Shorts, pencegahan pemutaran Shorts pada antrean/rekomendasi, reposisi slider kontrol di batas video, dan animasi mulus transisi mini player (`versionCode = 7`).
+
+### Diperbaiki & Dioptimalkan
+- **Stabilitas Orientasi Fullscreen Landscape**: Memindahkan `PlayerScreen` menjadi root overlay di atas `AdaptiveScaffold` pada `MainActivity` sehingga saat beralih ke mode landscape horizontal di ponsel, layar tidak ter-dispose dan orientasi tidak lagi terpental kembali ke mode potret.
+- **Penguncian Layar Shorts Vertikal**: Menetapkan orientasi permanen Portrait untuk video YouTube Shorts dan menyembunyikan tombol rotasi horizontal, sehingga video vertikal selalu ditampilkan penuh secara vertikal.
+- **Penyaringan Shorts Menyeluruh pada Antrean & Rekomendasi**: Saat opsi *"Sembunyikan YouTube Shorts"* diaktifkan di Pengaturan, video Shorts disaring secara ketat dari daftar *Video Terkait* dan antrean pemutaran otomatis (*autoplay next/previous*), serta saat fetching *related videos* YouTube.
+- **Reposisi Kontrol & Slider Pemutar Mobile**:
+  - Slider/scrubber dipindahkan tepat ke garis pembatas bawah video dan daftar detail rekomendasi, dilengkapi garis progres tipis saat kontrol idle.
+  - Teks penunjuk durasi dan tombol fullscreen diposisikan rapi tepat di atas slider.
+- **Animasi Transisi Mini Player**: Menekan tombol Back fisik/gesture saat mode PiP atau Background Playback aktif akan meminimalkan pemutar video menjadi mini player melayang dengan animasi slide-down vertikal halus ala YouTube aslinya.
+
 ## [1.3.2] - 2026-11-16
 
 Pembaruan tombol kontrol player mobile: mengganti tombol rekomendasi pada overlay player mobile dengan tombol Fullscreen/Layar Penuh instan (`versionCode = 6`).

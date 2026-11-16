@@ -36,11 +36,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -126,6 +128,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.nunatv.app.data.local.DownloadedVideoEntity
+import com.nunatv.app.data.local.isShortVideo
 import com.nunatv.app.data.local.NunaDatabase
 import com.nunatv.app.data.local.SubscribedChannelEntity
 import com.nunatv.app.data.preferences.AudioBoostLevel
@@ -150,6 +153,8 @@ fun PlayerScreen(
     downloadResolutionLabel: String = "1080p",
     isInPictureInPictureMode: Boolean = false,
     pipEnabled: Boolean = false,
+    backgroundPlaybackEnabled: Boolean = false,
+    hideShortsEnabled: Boolean = false,
     onEnterPip: (() -> Unit)? = null,
     onRetryStream: () -> Unit = {},
     onAudioBoostChange: ((AudioBoostLevel) -> Unit)? = null,
@@ -182,23 +187,26 @@ fun PlayerScreen(
     val channelDao = remember(context) { NunaDatabase.getInstance(context).channelDao() }
     val subscriptions by channelDao.getAllSubscriptions().collectAsState(initial = emptyList<SubscribedChannelEntity>())
 
-    // Playlist rekomendasi video selain video yang sedang diputar
-    val recommendations = remember(currentVideo, allVideos) {
-        allVideos.filter { it.id != currentVideo.id }
+    // Playlist rekomendasi video selain video yang sedang diputar (Filter out Shorts jika dinonaktifkan di pengaturan)
+    val recommendations = remember(currentVideo, allVideos, hideShortsEnabled) {
+        allVideos.filter { it.id != currentVideo.id && (!hideShortsEnabled || !it.isShortVideo) }
     }
-    val currentIndex = remember(currentVideo.id, allVideos) {
-        allVideos.indexOfFirst { it.id == currentVideo.id }
+    val candidateVideos = remember(allVideos, hideShortsEnabled) {
+        if (hideShortsEnabled) allVideos.filterNot { it.isShortVideo } else allVideos
     }
-    val nextVideo = remember(currentIndex, allVideos, recommendations) {
-        if (currentIndex >= 0 && allVideos.size > 1) {
-            allVideos[(currentIndex + 1) % allVideos.size]
+    val currentIndex = remember(currentVideo.id, candidateVideos) {
+        candidateVideos.indexOfFirst { it.id == currentVideo.id }
+    }
+    val nextVideo = remember(currentIndex, candidateVideos, recommendations) {
+        if (currentIndex >= 0 && candidateVideos.size > 1) {
+            candidateVideos[(currentIndex + 1) % candidateVideos.size]
         } else {
             recommendations.firstOrNull()
         }
     }
-    val prevVideo = remember(currentIndex, allVideos, recommendations) {
-        if (currentIndex >= 0 && allVideos.size > 1) {
-            allVideos[(currentIndex - 1 + allVideos.size) % allVideos.size]
+    val prevVideo = remember(currentIndex, candidateVideos, recommendations) {
+        if (currentIndex >= 0 && candidateVideos.size > 1) {
+            candidateVideos[(currentIndex - 1 + candidateVideos.size) % candidateVideos.size]
         } else {
             recommendations.lastOrNull()
         }
@@ -265,8 +273,15 @@ fun PlayerScreen(
         onDispose {
             longPressJob?.cancel()
             if (!isTv) {
-                (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
+        }
+    }
+
+    // Pastikan video Short selalu full screen vertical (portrait)
+    LaunchedEffect(isShortStream) {
+        if (isShortStream && !isTv) {
+            (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
@@ -327,6 +342,8 @@ fun PlayerScreen(
         }
     }
 
+    val shouldMinimizeOnBack = !isTv && (pipEnabled || backgroundPlaybackEnabled)
+
     fun handleBackNavigation() {
         when {
             showMobileQualityMenu -> showMobileQualityMenu = false
@@ -339,6 +356,10 @@ fun PlayerScreen(
             !isTv && !isPortrait -> {
                 // Di ponsel, jika sedang fullscreen landscape, kembali ke portrait dulu
                 (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            shouldMinimizeOnBack -> {
+                // Jika mode PIP atau suara latar belakang aktif, perkecil video ke mini player seperti tombol (v)
+                onMinimizeToMiniPlayer()
             }
             else -> onBack()
         }
@@ -847,10 +868,10 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = onBack,
+                            onClick = { handleBackNavigation() },
                             modifier = Modifier
                                 .size(48.dp)
-                                .dpadFocusable(onClick = onBack)
+                                .dpadFocusable(onClick = { handleBackNavigation() })
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1098,173 +1119,219 @@ fun PlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
+                        .then(if (!isMobileSplitView && !isTv) Modifier.navigationBarsPadding() else Modifier)
                         .padding(
-                            horizontal = if (isCompact) 14.dp else 20.dp,
-                            vertical = if (isCompact) 10.dp else 16.dp
+                            start = if (isMobileSplitView) 0.dp else (if (isCompact) 12.dp else 20.dp),
+                            end = if (isMobileSplitView) 0.dp else (if (isCompact) 12.dp else 20.dp),
+                            bottom = if (isMobileSplitView) 0.dp else (if (isTv) 16.dp else 6.dp)
                         )
                 ) {
-                    if (isLiveStream && durationMs <= 0L) {
-                        LinearProgressIndicator(
-                            progress = { 1f },
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = Color.DarkGray,
+                    val controlRow = @Composable {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 12.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                        )
-                    } else {
-                        val maxRange = durationMs.toFloat().coerceAtLeast(1f)
-                        val sliderPos = (if (isSeeking) seekPositionMs else currentPositionMs)
-                            .toFloat()
-                            .coerceIn(0f, maxRange)
-                        val bufferedFraction = (bufferedPositionMs.toFloat() / maxRange).coerceIn(0f, 1f)
-                        // Slider Seekbar Waktu dengan track buffer abu-abu di belakang progress aktif
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                                .padding(horizontal = if (isMobileSplitView) 14.dp else (if (!isTv) 6.dp else 0.dp)),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            if (isLiveStream) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                ) {
+                                    Text(
+                                        text = "LIVE",
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "${formatTimeMs(if (isSeeking) seekPositionMs else currentPositionMs)} / ${formatTimeMs(durationMs)}",
+                                    color = Color.LightGray,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+
+                            if (isTv) {
+                                // Di Android TV: Tombol Buka Rekomendasi Video (D-Pad)
+                                if (recommendations.isNotEmpty()) {
+                                    Surface(
+                                        onClick = { showRecommendations = !showRecommendations },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color(0xFF212121),
+                                        modifier = Modifier
+                                            .heightIn(min = 38.dp)
+                                            .dpadFocusable(
+                                                shape = RoundedCornerShape(16.dp),
+                                                onClick = { showRecommendations = !showRecommendations }
+                                            )
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.VideoLibrary,
+                                                contentDescription = "Rekomendasi",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Rekomendasi (${recommendations.size})",
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                imageVector = if (showRecommendations) Icons.Default.KeyboardArrowDown else Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                tint = Color.LightGray,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (!isShortStream) {
+                                // Di HP / Mobile: Tombol Fullscreen (Layar Penuh) khusus video reguler 16:9
+                                Surface(
+                                    onClick = {
+                                        val activity = context as? Activity
+                                        if (isPortrait) {
+                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                        } else {
+                                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPortrait) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
+                                            contentDescription = if (isPortrait) "Layar Penuh" else "Keluar Layar Penuh",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    val seekbarSlider = @Composable {
+                        if (isLiveStream && durationMs <= 0L) {
+                            LinearProgressIndicator(
+                                progress = { 1f },
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = Color.DarkGray,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = if (isMobileSplitView) 0.dp else 12.dp)
+                                    .height(if (isMobileSplitView) 3.dp else 4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                            )
+                        } else {
+                            val maxRange = durationMs.toFloat().coerceAtLeast(1f)
+                            val sliderPos = (if (isSeeking) seekPositionMs else currentPositionMs)
+                                .toFloat()
+                                .coerceIn(0f, maxRange)
+                            val bufferedFraction = (bufferedPositionMs.toFloat() / maxRange).coerceIn(0f, 1f)
+                            // Slider Seekbar Waktu dengan track buffer abu-abu di belakang progress aktif
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp)
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color.White.copy(alpha = 0.18f))
+                                    .offset(y = if (isMobileSplitView) 12.dp else 0.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth(bufferedFraction)
-                                        .height(4.dp)
-                                        .background(Color.White.copy(alpha = 0.42f))
-                                )
-                            }
-                            Slider(
-                                value = sliderPos,
-                                onValueChange = {
-                                    isSeeking = true
-                                    seekPositionMs = it.toLong()
-                                },
-                                onValueChangeFinished = {
-                                    MediaPlaybackManager.seekTo(seekPositionMs)
-                                    isSeeking = false
-                                },
-                                valueRange = 0f..maxRange,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = Color.Transparent
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusProperties { canFocus = false }
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (isLiveStream) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            ) {
-                                Text(
-                                    text = "LIVE",
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        } else {
-                            Text(
-                                text = "${formatTimeMs(if (isSeeking) seekPositionMs else currentPositionMs)} / ${formatTimeMs(durationMs)}",
-                                color = Color.LightGray,
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-
-                        if (isTv) {
-                            // Di Android TV: Tombol Buka Rekomendasi Video (D-Pad)
-                            if (recommendations.isNotEmpty()) {
-                                Surface(
-                                    onClick = { showRecommendations = !showRecommendations },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = Color(0xFF212121),
-                                    modifier = Modifier
-                                        .heightIn(min = 38.dp)
-                                        .dpadFocusable(
-                                            shape = RoundedCornerShape(16.dp),
-                                            onClick = { showRecommendations = !showRecommendations }
-                                        )
+                                        .fillMaxWidth()
+                                        .padding(horizontal = if (isMobileSplitView) 0.dp else 8.dp)
+                                        .height(if (isMobileSplitView) 3.dp else 4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color.White.copy(alpha = 0.18f))
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.VideoLibrary,
-                                            contentDescription = "Rekomendasi",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Rekomendasi (${recommendations.size})",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = if (showRecommendations) Icons.Default.KeyboardArrowDown else Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = Color.LightGray,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            // Di HP / Mobile: Tombol Fullscreen (Layar Penuh)
-                            Surface(
-                                onClick = {
-                                    val activity = context as? Activity
-                                    if (isPortrait) {
-                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                    } else {
-                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                    }
-                                },
-                                shape = RoundedCornerShape(50),
-                                color = Color.Black.copy(alpha = 0.5f),
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isPortrait) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
-                                        contentDescription = if (isPortrait) "Layar Penuh" else "Keluar Layar Penuh",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(bufferedFraction)
+                                            .fillMaxHeight()
+                                            .background(Color.White.copy(alpha = 0.42f))
                                     )
                                 }
+                                Slider(
+                                    value = sliderPos,
+                                    onValueChange = {
+                                        isSeeking = true
+                                        seekPositionMs = it.toLong()
+                                    },
+                                    onValueChangeFinished = {
+                                        MediaPlaybackManager.seekTo(seekPositionMs)
+                                        isSeeking = false
+                                    },
+                                    valueRange = 0f..maxRange,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                                        inactiveTrackColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusProperties { canFocus = false }
+                                )
                             }
                         }
                     }
+
+                    if (isTv) {
+                        seekbarSlider()
+                        Spacer(modifier = Modifier.height(4.dp))
+                        controlRow()
+                    } else {
+                        // Di Mobile view: baris durasi & tombol fullscreen di atas, slider di bawahnya tepat di garis pembatas video
+                        controlRow()
+                        seekbarSlider()
+                    }
                 }
+            }
+        }
+
+        // Garis progress tipis di batas bawah video saat kontrol sedang tidak aktif (khusus Mobile Split View)
+        if (isMobileSplitView && !showControls && isPlaying && !isLoadingStream) {
+            val maxRange = durationMs.toFloat().coerceAtLeast(1f)
+            val progress = (currentPositionMs.toFloat() / maxRange).coerceIn(0f, 1f)
+            val buffered = (bufferedPositionMs.toFloat() / maxRange).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.5.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Color.White.copy(alpha = 0.2f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(buffered)
+                        .fillMaxHeight()
+                        .background(Color.White.copy(alpha = 0.35f))
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.primary)
+                )
             }
         }
 

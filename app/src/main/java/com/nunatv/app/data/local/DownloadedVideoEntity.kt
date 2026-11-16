@@ -42,3 +42,10 @@ data class DownloadedVideoEntity(
         return categoriesList().any { it.equals(targetCategory, ignoreCase = true) }
     }
 }
+
+val DownloadedVideoEntity.isShortVideo: Boolean
+    get() = originalUrl.contains("/shorts/") ||
+        durationSeconds in 1L..75L ||
+        title.contains("#shorts", ignoreCase = true) ||
+        title.contains("#short", ignoreCase = true) ||
+        category.contains("Shorts", ignoreCase = true)

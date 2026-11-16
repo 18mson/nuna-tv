@@ -1376,7 +1376,8 @@ fun TvYoutubeScreen(
                             }
                         }
                         isCompactMobile -> {
-                            val showInlineShorts = uiState.activeCategory == "FOR_YOU" &&
+                            val showInlineShorts = !hideShortsEnabled &&
+                                uiState.activeCategory == "FOR_YOU" &&
                                 uiState.contentFilter == YoutubeContentFilter.ALL &&
                                 uiState.sortOption == YoutubeSortOption.DEFAULT &&
                                 uiState.shortsList.isNotEmpty()
@@ -1435,7 +1436,8 @@ fun TvYoutubeScreen(
                             }
                         }
                         else -> {
-                            val showInlineShorts = uiState.activeCategory == "FOR_YOU" &&
+                            val showInlineShorts = !hideShortsEnabled &&
+                                uiState.activeCategory == "FOR_YOU" &&
                                 uiState.contentFilter == YoutubeContentFilter.ALL &&
                                 uiState.sortOption == YoutubeSortOption.DEFAULT &&
                                 uiState.shortsList.isNotEmpty()

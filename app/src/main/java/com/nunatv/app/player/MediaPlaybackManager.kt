@@ -28,6 +28,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import com.nunatv.app.data.local.DownloadStatus
 import com.nunatv.app.data.local.DownloadedVideoEntity
+import com.nunatv.app.data.local.isShortVideo
 import com.nunatv.app.data.preferences.AppPreferences
 import com.nunatv.app.data.preferences.AudioBoostLevel
 import com.nunatv.app.data.preferences.PlaybackPositionStore
@@ -44,6 +45,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -462,7 +464,15 @@ object MediaPlaybackManager {
 
         // Ambil video terkait di background agar antrean Autoplay langsung siap
         relatedFetchJob = managerScope.launch {
-            val related = YoutubeSearchRepository.fetchRelatedVideos(item.videoId)
+            val hideShorts = try {
+                AppPreferences(appCtx).hideShortsEnabled.first()
+            } catch (_: Exception) {
+                false
+            }
+            var related = YoutubeSearchRepository.fetchRelatedVideos(item.videoId)
+            if (hideShorts) {
+                related = related.filterNot { it.isShort }
+            }
             if (related.isNotEmpty()) {
                 related.forEach { rel ->
                     if (rel.channelId.isNotBlank()) {
@@ -477,6 +487,9 @@ object MediaPlaybackManager {
                         val mergedTail = (upNextQueue + relatedEntities + cur.playlist)
                             .distinctBy { it.videoId }
                             .filter { it.videoId != active.videoId }
+                            .let { list ->
+                                if (hideShorts) list.filterNot { it.isShortVideo } else list
+                            }
                         cur.copy(playlist = listOf(active) + mergedTail)
                     }
                 }

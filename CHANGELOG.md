@@ -2,6 +2,16 @@
 
 Semua perubahan penting pada proyek Nuna TV dicatat di dokumen ini mengikuti format Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
+## [1.3.1] - 2026-11-16
+
+Pembaruan patch untuk kenyamanan mobile view, menu resolusi inline yang dapat diperluas, penyempurnaan resolusi stream (1080p, 720p, 480p, 360p), dan penonaktifan popup overlay rekomendasi di atas video mobile (`versionCode = 5`).
+
+### Diperbaiki & Dioptimalkan
+- **Mobile Quality & Settings Section Inline**: Menekan tombol pill resolusi (misal `360p` / `Kualitas`) pada mobile portrait tidak lagi memunculkan popup yang menutupi layar video dari atas, melainkan membuka section expand/collapse yang rapi tepat di bawah deretan tombol aksi.
+- **Resolusi Video Lebih Lengkap**: Mengoptimalkan extractor `yt-dlp` (`web,ios,android`) dan Innertube client `ANDROID_TESTSUITE` sehingga seluruh opsi resolusi tinggi (1080p, 720p, 480p, 360p) berhasil diekstrak dan dapat langsung dipilih oleh pengguna.
+- **Nonaktifkan Overlay Rekomendasi di Mobile View**: Menghilangkan popup horizontal *"Rekomendasi Video Lainnya"* yang menutupi video player pada tampilan mobile (hanya aktif di Android TV atau saat ponsel dalam orientasi Fullscreen landscape).
+- **Pengaturan Cepat di Bawah Video**: Menambahkan tombol Audio Boost (Normal, +6 dB, +12 dB, +18 dB) langsung di dalam section pengaturan resolusi di bawah video.
+
 ## [1.3.0] - 2026-11-16
 
 Pembaruan besar untuk pengalaman ponsel (Mobile Split View & gestures), integrasi QuickJS engine untuk download video dengan proteksi YouTube EJS, sistem langganan channel lokal, keamanan video anti-hapus, dan perbaikan tampilan status bar di Mode Terang (`versionCode = 4`).

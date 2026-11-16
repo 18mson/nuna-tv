@@ -9,10 +9,12 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -209,6 +211,7 @@ fun PlayerScreen(
     var showControls by remember { mutableStateOf(!isRemoteStream) }
     var showRecommendations by remember { mutableStateOf(false) }
     var showTopMenu by remember { mutableStateOf(false) }
+    var showMobileQualityMenu by remember { mutableStateOf(false) }
     var showAutoplayCountdown by remember { mutableStateOf(false) }
     var autoplayDismissedForCurrentVideo by remember(currentVideo.id, currentVideo.localFilePath) {
         mutableStateOf(false)
@@ -319,6 +322,7 @@ fun PlayerScreen(
 
     fun handleBackNavigation() {
         when {
+            showMobileQualityMenu -> showMobileQualityMenu = false
             showTopMenu -> showTopMenu = false
             showRecommendations -> showRecommendations = false
             showAutoplayCountdown -> {
@@ -374,7 +378,7 @@ fun PlayerScreen(
                                 onVideoChange(prevVideo)
                             }
                         } else if (!handledDrag && !isShortStream) {
-                            if (totalDragY > 60f || totalDragY < -60f) {
+                            if (!isMobileSplitView && (totalDragY > 60f || totalDragY < -60f)) {
                                 handledDrag = true
                                 showRecommendations = true
                                 showControls = false
@@ -1510,9 +1514,9 @@ fun PlayerScreen(
             }
         }
 
-        // 4. Panel Rekomendasi Video Ringkas di Sisi Bawah (D-Pad Down / Swipe)
+        // 4. Panel Rekomendasi Video Ringkas di Sisi Bawah (D-Pad Down / Swipe di TV & Fullscreen)
         AnimatedVisibility(
-            visible = showRecommendations && recommendations.isNotEmpty() && !isInPictureInPictureMode && !isLoadingStream,
+            visible = !isMobileSplitView && showRecommendations && recommendations.isNotEmpty() && !isInPictureInPictureMode && !isLoadingStream,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -1686,8 +1690,8 @@ fun PlayerScreen(
             }
         }
 
-        // 4b. Scrim penutup menu atas khusus mode HP: tap di mana saja di area layar/video akan menutup menu
-        if (showTopMenu && !isTv && !isInPictureInPictureMode) {
+        // 4b. Scrim penutup menu atas khusus mode HP Fullscreen: tap di mana saja di area layar/video akan menutup menu
+        if (!isMobileSplitView && showTopMenu && !isTv && !isInPictureInPictureMode) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1700,9 +1704,9 @@ fun PlayerScreen(
             )
         }
 
-        // 5. Menu Atas Pemutar Video (D-Pad UP): Ke Channel Utama & Ganti Resolusi (khusus stream online)
+        // 5. Menu Atas Pemutar Video (D-Pad UP / Fullscreen): Ke Channel Utama & Ganti Resolusi (khusus stream online)
         AnimatedVisibility(
-            visible = showTopMenu && !isInPictureInPictureMode && !isLoadingStream,
+            visible = !isMobileSplitView && showTopMenu && !isInPictureInPictureMode && !isLoadingStream,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
@@ -2178,10 +2182,10 @@ fun PlayerScreen(
 
                         Surface(
                             onClick = {
-                                showTopMenu = !showTopMenu
+                                showMobileQualityMenu = !showMobileQualityMenu
                             },
                             shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surfaceVariant
+                            color = if (showMobileQualityMenu) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -2190,16 +2194,147 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Default.Tune,
                                     contentDescription = "Kualitas",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = if (showMobileQualityMenu) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = activeStreamQuality?.label ?: "Kualitas",
+                                    text = activeStreamQuality?.label ?: currentVideo.resolution.ifBlank { "Kualitas" },
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
+                                    color = if (showMobileQualityMenu) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Panel Pengaturan Kualitas & Audio di Bawah Tombol Aksi (Khusus Mobile Split View)
+                    AnimatedVisibility(
+                        visible = showMobileQualityMenu,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Resolusi Video (${activeStreamQuality?.label ?: currentVideo.resolution.ifBlank { "360p" }})",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (streamQualityOptions.isNotEmpty()) {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(streamQualityOptions) { option ->
+                                        val isCurrent = option.label == (activeStreamQuality?.label ?: currentVideo.resolution)
+                                        Surface(
+                                            onClick = {
+                                                onSelectStreamQuality?.invoke(option)
+                                                showMobileQualityMenu = false
+                                            },
+                                            shape = RoundedCornerShape(50),
+                                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                            border = if (isCurrent) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                if (isCurrent) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                Text(
+                                                    text = if (isCurrent) "${option.label} • Aktif" else option.label,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isCurrent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "Sedang mengambil opsi resolusi lengkap...",
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Penguat Suara & Autoplay
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Penguat Suara (Audio Boost)",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(AudioBoostLevel.entries) { level ->
+                                    val isCurrent = level == audioBoostLevel
+                                    Surface(
+                                        onClick = {
+                                            onAudioBoostChange?.invoke(level)
+                                        },
+                                        shape = RoundedCornerShape(50),
+                                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                        border = if (isCurrent) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                    ) {
+                                        Text(
+                                            text = level.label,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isCurrent) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

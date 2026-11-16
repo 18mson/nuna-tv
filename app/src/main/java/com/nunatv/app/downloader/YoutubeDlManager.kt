@@ -52,16 +52,14 @@ object YoutubeDlManager {
 
     private const val TAG = "YoutubeDlManager"
 
-    // Gunakan player client android lebih dulu agar lebih cepat, lalu fallback ios/web bila perlu.
-    // android & ios tidak butuh JS runtime → aman untuk environment Android di device.
-    // visionos (default yt-dlp tanpa JS) tidak bisa akses video "Made for Kids".
+    // Gunakan web & ios dengan engine QuickJS agar daftar resolusi lengkap (1080p, 720p, 480p, 360p) tersedia
     private const val YOUTUBE_FAST_STREAM_ARGS =
-        "youtube:player_client=android,ios"
+        "youtube:player_client=ios,web,android"
     private const val YOUTUBE_EXTRACTOR_ARGS =
-        "youtube:player_client=android,ios,web"
-    // Args khusus untuk download (tanpa 'web' supaya tidak butuh JS runtime sama sekali)
+        "youtube:player_client=web,ios,android"
+    // Args khusus untuk download dengan QuickJS
     private const val YOUTUBE_DOWNLOAD_ARGS =
-        "youtube:player_client=android,ios"
+        "youtube:player_client=ios,android,web"
     private const val STREAM_CACHE_TTL_MS = 10 * 60 * 1000L
 
     private val streamCache = ConcurrentHashMap<String, Pair<Long, ResolvedYoutubeVideo>>()
@@ -246,14 +244,14 @@ object YoutubeDlManager {
             }
 
             val info = try {
-                fetchInfoWithArgs(YOUTUBE_FAST_STREAM_ARGS)
-            } catch (_: Throwable) {
-                null
-            } ?: try {
                 fetchInfoWithArgs(YOUTUBE_EXTRACTOR_ARGS)
             } catch (_: Throwable) {
                 null
-            } ?: fetchInfoWithArgs(null)
+            } ?: try {
+                fetchInfoWithArgs(null)
+            } catch (_: Throwable) {
+                null
+            } ?: fetchInfoWithArgs(YOUTUBE_FAST_STREAM_ARGS)
                 ?: return@withContext null
 
             val formats = info.formats.orEmpty()
@@ -431,6 +429,11 @@ object YoutubeDlManager {
         coroutineScope {
             val clients = listOf(
                 Triple(
+                    "ANDROID_TESTSUITE",
+                    "1.9",
+                    "com.google.android.youtube/1.9 (Linux; U; Android 14) gzip"
+                ),
+                Triple(
                     "ANDROID",
                     "19.44.38",
                     "com.google.android.youtube/19.44.38 (Linux; U; Android 14) gzip"
@@ -501,7 +504,7 @@ object YoutubeDlManager {
                         put("clientVersion", clientVersion)
                         put("hl", "id")
                         put("gl", "ID")
-                        if (clientName == "ANDROID") {
+                        if (clientName == "ANDROID" || clientName == "ANDROID_TESTSUITE") {
                             put("androidSdkVersion", 34)
                         } else if (clientName == "ANDROID_VR") {
                             put("androidSdkVersion", 32)

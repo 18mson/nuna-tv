@@ -551,14 +551,14 @@ object MediaPlaybackManager {
             syncBackgroundService(appCtx)
             prefetchNextInBackground(appCtx)
 
-            if (!resolved.isLive && resolved.qualityOptions.size <= 1) {
+            if (!resolved.isLive && resolved.qualityOptions.size < 4) {
                 qualityEnrichJob = managerScope.launch {
                     val full = YoutubeDlManager.resolveViaYtDlpOnly(
                         context = appCtx,
                         videoUrl = item.watchUrl,
                         preferredHeight = preferredHeightForResolve
                     ) ?: return@launch
-                    if (_state.value.currentVideo?.videoId == item.videoId && full.qualityOptions.size > 1) {
+                    if (_state.value.currentVideo?.videoId == item.videoId && full.qualityOptions.size > _state.value.streamQualityOptions.size) {
                         YoutubeDlManager.cacheResolvedVideo(item.watchUrl, preferredHeightForResolve, full)
                         _state.update { cur ->
                             if (cur.currentVideo?.videoId == item.videoId) {

@@ -51,6 +51,20 @@ class YoutubeViewModel(
         }
     }
 
+    fun showSubscriptions() {
+        _uiState.update {
+            it.copy(
+                activeCategory = "SUBSCRIPTIONS",
+                searchQuery = "",
+                activeChannel = null,
+                contentFilter = YoutubeContentFilter.ALL,
+                isLoading = false,
+                isRefreshing = false,
+                errorMessage = null
+            )
+        }
+    }
+
     fun loadRecommendedFeed(force: Boolean = true, asRefresh: Boolean = false) {
         val current = _uiState.value
         if (!force && current.hasLoadedOnce && current.results.isNotEmpty() && current.activeCategory == "FOR_YOU") {

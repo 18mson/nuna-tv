@@ -29,6 +29,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import com.nunatv.app.NunaTvApplication
 import com.nunatv.app.data.local.DownloadStatus
@@ -116,6 +119,11 @@ class MainActivity : ComponentActivity() {
 
         // Mencegah layar TV/Proyektor mati atau blank saat aplikasi Nuna TV terbuka
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Edge-to-Edge transparan penuh untuk HP & TV
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
         ContextCompat.registerReceiver(
             this,
@@ -215,7 +223,14 @@ class MainActivity : ComponentActivity() {
             }
 
             NunaTheme(palette = colorPalette, themeMode = themeMode) {
-            AdaptiveScaffold(
+                val isDark = themeMode == AppThemeMode.DARK
+                val insetsController = remember(window) { WindowInsetsControllerCompat(window, window.decorView) }
+                SideEffect {
+                    insetsController.isAppearanceLightStatusBars = !isDark
+                    insetsController.isAppearanceLightNavigationBars = !isDark
+                }
+
+                AdaptiveScaffold(
                 isTv = isTvDevice,
                 currentRoute = if (showFullPlayer) "player" else currentTab,
                 onNavigate = { targetScreen ->

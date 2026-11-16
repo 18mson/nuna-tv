@@ -187,31 +187,27 @@ fun AdaptiveScaffold(
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         }
 
-        // Tinggi pill navbar: 48dp item + 12dp padding atas-bawah + 8dp gap atas
-        val pillNavHeightDp = 80.dp
-
         Box(modifier = Modifier.fillMaxSize()) {
-            // Konten utama mengambil seluruh layar, diberi padding bawah agar tidak tertutup navbar
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(modifier = Modifier.weight(1f)) {
-                    content()
-                }
-                // Mini player (di atas navbar)
-                miniPlayerContent()
-                // Spacer sebesar tinggi pill agar konten tidak tersembunyi di bawah navbar
-                Spacer(modifier = Modifier.navigationBarsPadding())
-                Spacer(modifier = Modifier.height(pillNavHeightDp))
+            // Konten utama memenuhi seluruh layar (Edge-to-Edge) sehingga mengalir bebas & tembus di bawah pill
+            Box(modifier = Modifier.fillMaxSize()) {
+                content()
             }
 
-            // Pill navbar floating overlay — transparan di sekitarnya
+            // Floating MiniPlayer + Pill Navbar melayang di atas konten (sekitarnya 100% transparan)
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(top = 8.dp, bottom = 12.dp),
+                    .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                miniPlayerContent()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(top = 4.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                 Surface(
                     shape = RoundedCornerShape(percent = 50),
                     color = pillContainerColor,
@@ -272,6 +268,7 @@ fun AdaptiveScaffold(
             }
         }
     }
+}
 }
 
 @Composable

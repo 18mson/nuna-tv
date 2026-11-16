@@ -5,8 +5,11 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -199,6 +202,10 @@ fun PlayerScreen(
 
     var longPressJob by remember { mutableStateOf<Job?>(null) }
     var longPressTriggered by remember { mutableStateOf(false) }
+
+    // State Double-Tap Seek (±10 detik ala YouTube mobile)
+    var doubleTapSeekSide by remember { mutableStateOf<String?>(null) }
+    var doubleTapJob by remember { mutableStateOf<Job?>(null) }
 
     val playerFocusRequester = remember { FocusRequester() }
     val autoplayFocusRequester = remember { FocusRequester() }
@@ -464,16 +471,49 @@ fun PlayerScreen(
                 .focusRequester(playerFocusRequester)
                 .focusable()
                 .pointerInput(isInPictureInPictureMode, isLoadingStream, streamLoadError) {
-                    detectTapGestures {
-                        if (showTopMenu) {
-                            showTopMenu = false
-                            return@detectTapGestures
+                    detectTapGestures(
+                        onTap = {
+                            if (showTopMenu) {
+                                showTopMenu = false
+                                return@detectTapGestures
+                            }
+                            if (!isInPictureInPictureMode && !isLoadingStream && streamLoadError == null) {
+                                showControls = !showControls
+                                interactionTick++
+                            }
+                        },
+                        onDoubleTap = { offset ->
+                            if (isInPictureInPictureMode || isLoadingStream || streamLoadError != null) return@detectTapGestures
+                            val width = size.width
+                            val seekDelta = 10000L
+                            if (offset.x < width * 0.42f) {
+                                // Double tap sisi kiri = mundur 10 detik
+                                val newPos = (exoPlayer.currentPosition - seekDelta).coerceAtLeast(0L)
+                                MediaPlaybackManager.seekTo(newPos)
+                                doubleTapSeekSide = "left"
+                                doubleTapJob?.cancel()
+                                doubleTapJob = coroutineScope.launch {
+                                    delay(700)
+                                    doubleTapSeekSide = null
+                                }
+                            } else if (offset.x > width * 0.58f) {
+                                // Double tap sisi kanan = maju 10 detik
+                                val dur = exoPlayer.duration.coerceAtLeast(0L)
+                                val maxLimit = if (dur > 0L) dur else Long.MAX_VALUE
+                                val newPos = (exoPlayer.currentPosition + seekDelta).coerceAtMost(maxLimit)
+                                MediaPlaybackManager.seekTo(newPos)
+                                doubleTapSeekSide = "right"
+                                doubleTapJob?.cancel()
+                                doubleTapJob = coroutineScope.launch {
+                                    delay(700)
+                                    doubleTapSeekSide = null
+                                }
+                            } else {
+                                // Double tap di tengah = toggle play/pause
+                                MediaPlaybackManager.togglePlayPause()
+                            }
                         }
-                        if (!isInPictureInPictureMode && !isLoadingStream && streamLoadError == null) {
-                            showControls = !showControls
-                            interactionTick++
-                        }
-                    }
+                    )
                 },
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -498,6 +538,50 @@ fun PlayerScreen(
                 }
             }
         )
+
+        // 1a. Double-Tap Seek Feedback Overlay (Kiri = -10s, Kanan = +10s ala YouTube resmi)
+        AnimatedVisibility(
+            visible = doubleTapSeekSide != null,
+            enter = fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.8f),
+            exit = fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.9f),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (doubleTapSeekSide == "left") {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 48.dp)
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.65f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Replay10, contentDescription = null, tint = Color.White, modifier = Modifier.size(38.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("-10 detik", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else if (doubleTapSeekSide == "right") {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 48.dp)
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.65f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Forward10, contentDescription = null, tint = Color.White, modifier = Modifier.size(38.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("+10 detik", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
 
         // 1b. Loading Stream atau Error Overlay langsung di dalam Player (Instant Open UX)
         if ((isLoadingStream || streamLoadError != null) && !isInPictureInPictureMode) {

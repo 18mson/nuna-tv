@@ -7,13 +7,14 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [DownloadedVideoEntity::class],
-    version = 2,
+    entities = [DownloadedVideoEntity::class, SubscribedChannelEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class NunaDatabase : RoomDatabase() {
 
     abstract fun videoDao(): VideoDao
+    abstract fun channelDao(): ChannelDao
 
     companion object {
         @Volatile

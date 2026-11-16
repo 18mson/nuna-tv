@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -59,6 +60,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
@@ -67,6 +69,9 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Subscriptions
+import com.nunatv.app.data.local.NunaDatabase
+import com.nunatv.app.data.local.SubscribedChannelEntity
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -218,6 +223,9 @@ fun TvYoutubeScreen(
     var menuItemForCard by remember { mutableStateOf<YoutubeSearchItem?>(null) }
     var channelSearchQuery by remember { mutableStateOf("") }
     var channelSortTab by remember { mutableStateOf("ALL") }
+
+    val channelDao = remember(context) { NunaDatabase.getInstance(context).channelDao() }
+    val subscriptions by channelDao.getAllSubscriptions().collectAsState(initial = emptyList())
 
     LaunchedEffect(uiState.activeCategory, uiState.activeChannel?.channelId) {
         if (uiState.activeCategory != "CHANNEL") {
@@ -450,6 +458,7 @@ fun TvYoutubeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .statusBarsPadding()
                         .padding(
                             horizontal = if (isCompactMobile) 12.dp else 16.dp,
                             vertical = 8.dp
@@ -635,6 +644,18 @@ fun TvYoutubeScreen(
                                 label = "Live",
                                 selected = uiState.activeCategory == "LIVE_FEED",
                                 onClick = { youtubeViewModel.performSearch("live streaming indonesia", categoryKey = "LIVE_FEED") }
+                            )
+                        }
+
+                        // Langganan (Subscriptions) Channel Lokal
+                        item {
+                            val subLabel = if (subscriptions.isNotEmpty()) "Langganan (${subscriptions.size})" else "Langganan"
+                            TvChip(
+                                label = subLabel,
+                                selected = uiState.activeCategory == "SUBSCRIPTIONS",
+                                leadingIcon = Icons.Default.Subscriptions,
+                                leadingIconTint = MaterialTheme.colorScheme.primary,
+                                onClick = { youtubeViewModel.showSubscriptions() }
                             )
                         }
 
@@ -934,6 +955,45 @@ fun TvYoutubeScreen(
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
+
+                            // Tombol Langganan (Subscribe) Lokal Ala YouTube / NewPipe
+                            val isSubscribed = subscriptions.any { it.channelId == currentCh.channelId }
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        if (isSubscribed) {
+                                            channelDao.unsubscribe(currentCh.channelId)
+                                            Toast.makeText(context, "Batal langganan ${currentCh.channelName}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            channelDao.subscribe(
+                                                SubscribedChannelEntity(
+                                                    channelId = currentCh.channelId,
+                                                    channelName = currentCh.channelName,
+                                                    avatarUrl = currentCh.avatarUrl,
+                                                    bannerUrl = currentCh.bannerUrl,
+                                                    subscriberCount = currentCh.subscriberCount
+                                                )
+                                            )
+                                            Toast.makeText(context, "Berlangganan ${currentCh.channelName}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSubscribed) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.primary,
+                                    contentColor = if (isSubscribed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(50),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(top = 6.dp)
+                            ) {
+                                if (isSubscribed) {
+                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Disubscribe", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Text("Langganan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
 
@@ -1081,6 +1141,130 @@ fun TvYoutubeScreen(
                                 )
                             }
                         }
+                        uiState.activeCategory == "SUBSCRIPTIONS" -> {
+                            if (subscriptions.isEmpty()) {
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Subscriptions,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(56.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text(
+                                        text = "Belum Ada Channel Langganan",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Buka channel video yang Anda suka lalu klik tombol 'Langganan' untuk menyimpannya di sini.",
+                                        style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    contentPadding = PaddingValues(top = 12.dp, bottom = if (isTv) 24.dp else 108.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = if (isCompactMobile) 12.dp else 16.dp)
+                                ) {
+                                    items(subscriptions, key = { it.channelId }) { sub ->
+                                        Card(
+                                            onClick = {
+                                                youtubeViewModel.openChannelPage(
+                                                    ChannelDestination(
+                                                        channelId = sub.channelId,
+                                                        channelName = sub.channelName,
+                                                        avatarUrl = sub.avatarUrl,
+                                                        bannerUrl = sub.bannerUrl,
+                                                        subscriberCount = sub.subscriberCount
+                                                    )
+                                                )
+                                            },
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(14.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (sub.avatarUrl.isNotBlank()) {
+                                                    AsyncImage(
+                                                        model = sub.avatarUrl,
+                                                        contentDescription = sub.channelName,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .clip(CircleShape)
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .clip(CircleShape)
+                                                            .background(MaterialTheme.colorScheme.primary),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = sub.channelName.take(1).uppercase(),
+                                                            color = MaterialTheme.colorScheme.onPrimary,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 20.sp
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(14.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = sub.channelName,
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    if (sub.subscriberCount.isNotBlank()) {
+                                                        Text(
+                                                            text = sub.subscriberCount,
+                                                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        coroutineScope.launch {
+                                                            channelDao.unsubscribe(sub.channelId)
+                                                            Toast.makeText(context, "Batal langganan ${sub.channelName}", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Clear,
+                                                        contentDescription = "Hapus Langganan",
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         uiState.errorMessage != null && displayedResults.isEmpty() && uiState.activeCategory != "WATCH_HISTORY" -> {
                             Column(
                                 modifier = Modifier
@@ -1165,8 +1349,10 @@ fun TvYoutubeScreen(
                                 state = youtubeViewModel.gridState,
                                 columns = shortsCols,
                                 contentPadding = PaddingValues(
-                                    horizontal = if (isCompactMobile) 12.dp else 16.dp,
-                                    vertical = 12.dp
+                                    start = if (isCompactMobile) 12.dp else 16.dp,
+                                    end = if (isCompactMobile) 12.dp else 16.dp,
+                                    top = 12.dp,
+                                    bottom = if (isTv) 12.dp else 108.dp
                                 ),
                                 horizontalArrangement = Arrangement.spacedBy(if (isCompactMobile) 10.dp else 14.dp),
                                 verticalArrangement = Arrangement.spacedBy(if (isCompactMobile) 12.dp else 16.dp),
@@ -1199,7 +1385,7 @@ fun TvYoutubeScreen(
 
                             LazyColumn(
                                 state = youtubeViewModel.mobileListState,
-                                contentPadding = PaddingValues(top = 8.dp, bottom = 18.dp),
+                                contentPadding = PaddingValues(top = 8.dp, bottom = if (isTv) 18.dp else 108.dp),
                                 verticalArrangement = Arrangement.spacedBy(18.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
@@ -1261,7 +1447,12 @@ fun TvYoutubeScreen(
                             LazyVerticalGrid(
                                 state = youtubeViewModel.gridState,
                                 columns = gridCols,
-                                contentPadding = PaddingValues(16.dp),
+                                contentPadding = PaddingValues(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 16.dp,
+                                    bottom = if (isTv) 16.dp else 108.dp
+                                ),
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(16.dp),
                                 modifier = Modifier.fillMaxSize()

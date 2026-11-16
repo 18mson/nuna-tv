@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -178,6 +179,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .statusBarsPadding()
                     .padding(
                         start = if (isCompactMobile) 12.dp else 16.dp,
                         end = if (isCompactMobile) 8.dp else 16.dp,
@@ -313,7 +315,7 @@ fun HomeScreen(
                 when (selectedCategory) {
                     "Semua" -> {
                         LazyColumn(
-                            contentPadding = PaddingValues(bottom = 24.dp),
+                            contentPadding = PaddingValues(bottom = if (isTv) 24.dp else 108.dp),
                             verticalArrangement = Arrangement.spacedBy(if (isCompactMobile) 14.dp else 20.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -523,7 +525,12 @@ fun HomeScreen(
 
                                 LazyVerticalGrid(
                                     columns = gridColumns,
-                                    contentPadding = PaddingValues(pad),
+                                    contentPadding = PaddingValues(
+                                        start = pad,
+                                        end = pad,
+                                        top = pad,
+                                        bottom = if (isTv) pad else 108.dp
+                                    ),
                                     horizontalArrangement = Arrangement.spacedBy(pad),
                                     verticalArrangement = Arrangement.spacedBy(pad),
                                     modifier = Modifier.fillMaxSize()

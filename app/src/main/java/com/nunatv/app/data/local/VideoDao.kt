@@ -59,6 +59,12 @@ interface VideoDao {
     @Query("SELECT DISTINCT category FROM downloaded_videos WHERE category != ''")
     fun getAllCategories(): Flow<List<String>>
 
+    @Query("SELECT * FROM downloaded_videos")
+    suspend fun getAllVideosList(): List<DownloadedVideoEntity>
+
+    @Query("UPDATE downloaded_videos SET localFilePath = :filePath WHERE id = :id")
+    suspend fun updateFilePath(id: Long, filePath: String)
+
     @Query("DELETE FROM downloaded_videos WHERE id = :id")
     suspend fun deleteVideoById(id: Long)
 

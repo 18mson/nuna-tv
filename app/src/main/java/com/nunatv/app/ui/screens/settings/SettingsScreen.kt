@@ -1,5 +1,6 @@
 package com.nunatv.app.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,13 +26,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
@@ -50,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nunatv.app.data.local.NunaDatabase
 import com.nunatv.app.data.preferences.AppColorPalette
 import com.nunatv.app.data.preferences.AppPreferences
 import com.nunatv.app.data.preferences.AppThemeMode
@@ -96,7 +103,8 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(24.dp)
+            .statusBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 120.dp)
     ) {
         Text(
             text = "Pengaturan Nuna TV",
@@ -492,6 +500,115 @@ fun SettingsScreen(
             storageInfo = storageInfo,
             downloadPath = downloadPath
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Fitur Backup / Aman dari Uninstall
+        var isOperatingStorage by remember { mutableStateOf(false) }
+        val database = remember(context) { NunaDatabase.getInstance(context) }
+
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceContainerHigh),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Keamanan Video (Anti-Hapus)",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        color = colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                Text(
+                    text = "Simpan video ke folder publik (Download/NunaTV) agar video TIDAK hilang saat aplikasi di-uninstall, atau pulihkan video yang sudah ada di folder tersebut.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = colorScheme.onSurfaceVariant)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (isOperatingStorage) return@Button
+                            isOperatingStorage = true
+                            coroutineScope.launch {
+                                try {
+                                    val dao = database.videoDao()
+                                    val allVideos = dao.getAllVideosList()
+                                    val count = StorageUtils.exportVideosToPublic(dao, allVideos)
+                                    Toast.makeText(
+                                        context,
+                                        if (count > 0) "Berhasil memindahkan $count video ke folder Download/NunaTV (Aman dari uninstall)!"
+                                        else "Semua video sudah berada di folder aman / belum ada video.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal memindahkan: ${e.message}", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    isOperatingStorage = false
+                                }
+                            }
+                        },
+                        enabled = !isOperatingStorage,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorScheme.primary,
+                            contentColor = colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.DriveFileMove, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isOperatingStorage) "Memproses..." else "Amankan Video",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (isOperatingStorage) return@OutlinedButton
+                            isOperatingStorage = true
+                            coroutineScope.launch {
+                                try {
+                                    val dao = database.videoDao()
+                                    val count = StorageUtils.scanAndImportVideos(dao)
+                                    Toast.makeText(
+                                        context,
+                                        if (count > 0) "Berhasil mengimpor $count video ke Pustaka Offline!"
+                                        else "Tidak ada video baru yang ditemukan di Download/NunaTV.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal memindai: ${e.message}", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    isOperatingStorage = false
+                                }
+                            }
+                        },
+                        enabled = !isOperatingStorage,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isOperatingStorage) "Memindai..." else "Pindai / Impor",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(28.dp))
 

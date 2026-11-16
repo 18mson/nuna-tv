@@ -2,6 +2,23 @@
 
 Semua perubahan penting pada proyek Nuna TV dicatat di dokumen ini mengikuti format Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
+## [1.3.0] - 2026-11-16
+
+Pembaruan besar untuk pengalaman ponsel (Mobile Split View & gestures), integrasi QuickJS engine untuk download video dengan proteksi YouTube EJS, sistem langganan channel lokal, keamanan video anti-hapus, dan perbaikan tampilan status bar di Mode Terang (`versionCode = 4`).
+
+### Ditambahkan
+- **Mobile Video Detail (Split View)**: Pada orientasi portrait di ponsel, pemutar video tampil di bagian atas dengan rasio 16:9, sementara di bawahnya terdapat detail judul video, baris channel dengan tombol langganan, tombol aksi cepat (**Download**, **Bagikan**, **Kualitas**), serta daftar **Video Terkait (Rekomendasi)** yang bisa langsung diputar.
+- **Dukungan JavaScript Engine QuickJS (`youtubedl-android:0.18.1`)**: Mengintegrasikan engine native QuickJS (`libqjs.so`) dan argumen `--js-runtimes quickjs` sehingga video berproteksi YouTube JavaScript Player Challenge (seperti video *"Made for Kids"* BabyBus) dapat diunduh tanpa error.
+- **Sistem Retry Download Berlapis Otomatis**: Jika client utama mengalami limitasi dari YouTube, sistem otomatis mencoba fallback ke client lain (`android,ios` $\rightarrow$ `ios,web` $\rightarrow$ default extractor).
+- **Langganan Channel Lokal (Offline Subscriptions)**: Menyimpan daftar channel favorit ke Room Database lokal (`subscribed_channels`) tanpa perlu login akun Google, lengkap dengan chip filter *"Langganan"* di tab YouTube dan tombol subscribe di detail channel & player.
+- **Keamanan Video Anti-Hapus (Export & Import Public Storage)**: Fitur di Pengaturan untuk memindahkan video offline ke direktori publik (`/Download/NunaTV`) agar video tidak terhapus saat aplikasi di-uninstall, serta tombol pemindaian/impor otomatis untuk memulihkan video saat aplikasi diinstall ulang.
+- **Gestur Double-Tap Seek (±10 detik)**: Ketuk dua kali di sisi kiri layar untuk mundur 10 detik dan sisi kanan untuk maju 10 detik dengan animasi badge ripple ala aplikasi YouTube resmi.
+
+### Diperbaiki & Dioptimalkan
+- **Ikon Status Bar pada Mode Terang**: Memperbaiki `WindowInsetsControllerCompat.isAppearanceLightStatusBars = true` sehingga ikon jam, baterai, dan sinyal otomatis berwarna hitam pekat dan terlihat jelas di latar belakang terang.
+- **Padding Bilah Navigasi Bawah**: Menambahkan bottom padding `108.dp` pada Beranda, YouTube, dan Pengaturan agar konten paling bawah tidak tertutup oleh floating pill navbar.
+- **Pemisahan Folder Rilis**: Folder APK rilis dipisahkan per versi (`releases/v1.3.0/`) sehingga tidak lagi menimpa artefak rilis sebelumnya.
+
 ## [1.2.0] - 2026-11-13
 
 Pembaruan besar untuk Material 3 Expressive, tema warna dinamis, multi-kategori dan pemutaran instan per kategori, resolusi unduhan bertingkat dengan hidden setting, serta tampilan halaman channel YouTube lengkap (`versionCode = 3`).

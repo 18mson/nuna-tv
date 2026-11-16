@@ -2,6 +2,17 @@
 
 Semua perubahan penting pada proyek Nuna TV dicatat di dokumen ini mengikuti format Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
+## [1.3.2] - 2026-11-16
+
+Pembaruan tombol kontrol player mobile: mengganti tombol rekomendasi pada overlay player mobile dengan tombol Fullscreen/Layar Penuh instan (`versionCode = 6`).
+
+### Diperbaiki & Dioptimalkan
+- **Navigasi & Status Bar 100% Transparan**: Menambahkan `isNavigationBarContrastEnforced = false` dan `isStatusBarContrastEnforced = false` sehingga tidak ada lagi bar putih/scrim yang menghalangi di bagian bawah layar ponsel.
+- **Ikon Status Bar Otomatis Adaptif**: Ikon status bar (baterai, jam, sinyal) otomatis menjadi gelap saat aplikasi berada di Mode Terang (Light Mode) agar terlihat jelas.
+- **Tombol Fullscreen di Player Mobile**: Pada mobile view (portrait), tombol *"Rekomendasi"* di baris kontrol player digantikan dengan tombol icon **Fullscreen** (`Fullscreen` & `FullscreenExit`) yang dapat langsung memutar layar ke posisi Landscape layar penuh dan sebaliknya.
+- **Navigasi Tombol Back saat Fullscreen**: Menekan tombol Back fisik/gesture saat dalam mode Fullscreen landscape di ponsel akan otomatis mengembalikan orientasi ke Portrait terlebih dahulu sebelum keluar dari player.
+- **D-Pad TV Tetap Terjaga**: Tombol *"Rekomendasi (N)"* tetap dipertahankan khusus untuk Android TV agar navigasi D-Pad remote tetap berfungsi normal.
+
 ## [1.3.1] - 2026-11-16
 
 Pembaruan patch untuk kenyamanan mobile view, menu resolusi inline yang dapat diperluas, penyempurnaan resolusi stream (1080p, 720p, 480p, 360p), dan penonaktifan popup overlay rekomendasi di atas video mobile (`versionCode = 5`).

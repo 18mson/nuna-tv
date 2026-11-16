@@ -1,6 +1,8 @@
 package com.nunatv.app.ui.screens.player
 
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.KeyEvent
 import android.view.ViewGroup
@@ -60,6 +62,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -260,6 +264,9 @@ fun PlayerScreen(
     DisposableEffect(Unit) {
         onDispose {
             longPressJob?.cancel()
+            if (!isTv) {
+                (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
         }
     }
 
@@ -328,6 +335,10 @@ fun PlayerScreen(
             showAutoplayCountdown -> {
                 autoplayDismissedForCurrentVideo = true
                 showAutoplayCountdown = false
+            }
+            !isTv && !isPortrait -> {
+                // Di ponsel, jika sedang fullscreen landscape, kembali ke portrait dulu
+                (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
             else -> onBack()
         }
@@ -1181,44 +1192,73 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Tombol Buka Rekomendasi Video (D-Pad & Touch)
-                        if (recommendations.isNotEmpty()) {
+                        if (isTv) {
+                            // Di Android TV: Tombol Buka Rekomendasi Video (D-Pad)
+                            if (recommendations.isNotEmpty()) {
+                                Surface(
+                                    onClick = { showRecommendations = !showRecommendations },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFF212121),
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .dpadFocusable(
+                                            shape = RoundedCornerShape(16.dp),
+                                            onClick = { showRecommendations = !showRecommendations }
+                                        )
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.VideoLibrary,
+                                            contentDescription = "Rekomendasi",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Rekomendasi (${recommendations.size})",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = if (showRecommendations) Icons.Default.KeyboardArrowDown else Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = Color.LightGray,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Di HP / Mobile: Tombol Fullscreen (Layar Penuh)
                             Surface(
-                                onClick = { showRecommendations = !showRecommendations },
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF212121),
-                                modifier = Modifier
-                                    .heightIn(min = 38.dp)
-                                    .dpadFocusable(
-                                        shape = RoundedCornerShape(16.dp),
-                                        onClick = { showRecommendations = !showRecommendations }
-                                    )
+                                onClick = {
+                                    val activity = context as? Activity
+                                    if (isPortrait) {
+                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                    } else {
+                                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    }
+                                },
+                                shape = RoundedCornerShape(50),
+                                color = Color.Black.copy(alpha = 0.5f),
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.VideoLibrary,
-                                        contentDescription = "Rekomendasi",
+                                        imageVector = if (isPortrait) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
+                                        contentDescription = if (isPortrait) "Layar Penuh" else "Keluar Layar Penuh",
                                         tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Rekomendasi (${recommendations.size})",
-                                        color = Color.White,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        imageVector = if (showRecommendations) Icons.Default.KeyboardArrowDown else Icons.Default.PlayArrow,
-                                        contentDescription = null,
-                                        tint = Color.LightGray,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(24.dp)
                                     )
                                 }
                             }
